@@ -183,6 +183,8 @@ public:
     void updateFromDataFeed();
     QString getDataFeedError() const;
 
+    int getProtocolVersion() const;
+
 private:
     CWallet *wallet;
 

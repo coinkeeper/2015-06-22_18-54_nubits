@@ -530,3 +530,11 @@ QString WalletModel::getDataFeedError() const
     return QString::fromStdString(strDataFeedError);
 }
 
+int WalletModel::getProtocolVersion() const
+{
+    LOCK(cs_main);
+    if (!pindexBest)
+        return 0;
+
+    return pindexBest->nProtocolVersion;
+}
