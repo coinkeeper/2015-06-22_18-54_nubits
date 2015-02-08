@@ -327,9 +327,7 @@ bool CalculateParkRateResults(const CVote &vote, const CBlockIndex *pindexprev, 
 
 bool CParkRateVote::IsValid() const
 {
-    if (cUnit == 'S')
-        return false;
-    if (cUnit != 'B')
+    if (!IsValidCurrency(cUnit))
         return false;
 
     set<unsigned char> seenCompactDurations;
@@ -356,9 +354,7 @@ bool CParkRate::IsValid() const
 
 bool CCustodianVote::IsValid(int nProtocolVersion) const
 {
-    if (cUnit == 'S')
-        return false;
-    if (cUnit != 'B')
+    if (!IsValidCurrency(cUnit))
         return false;
     if (!MoneyRange(nAmount))
         return false;

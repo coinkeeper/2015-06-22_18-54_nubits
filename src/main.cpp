@@ -590,7 +590,7 @@ int CMerkleTx::SetMerkleBranch(const CBlock* pblock)
 bool CTransaction::CheckTransaction() const
 {
     // Basic checks that don't depend on any context
-    if (!ValidUnit(cUnit))
+    if (!IsValidUnit(cUnit))
         return DoS(10, error("CTransaction::CheckTransaction() : invalid unit"));
     if (vin.empty())
         return DoS(10, error("CTransaction::CheckTransaction() : vin empty"));

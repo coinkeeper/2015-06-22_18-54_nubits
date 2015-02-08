@@ -805,7 +805,7 @@ Value getparkrates(const Array& params, bool fHelp)
     else
         cUnit = pwalletMain->Unit();
 
-    if (!ValidUnit(cUnit))
+    if (!IsValidUnit(cUnit))
         throw JSONRPCError(-12, "Error: Invalid currency");
 
     if (cUnit == 'S')
@@ -3493,7 +3493,7 @@ Value liquidityinfo(const Array& params, bool fHelp)
 
     unsigned char cUnit = params[0].get_str()[0];
 
-    if (!ValidUnit(cUnit) || cUnit == 'S')
+    if (!IsValidCurrency(cUnit))
         throw JSONRPCError(-3, "Invalid currency");
 
     CBitcoinAddress address(params[3].get_str());
@@ -3503,7 +3503,7 @@ Value liquidityinfo(const Array& params, bool fHelp)
 
     unsigned char cCustodianUnit = address.GetUnit();
 
-    if (!ValidUnit(cCustodianUnit) || cCustodianUnit == 'S')
+    if (!IsValidCurrency(cCustodianUnit))
         throw JSONRPCError(-3, "Invalid custodian unit");
 
     CWallet* wallet = GetWallet(cCustodianUnit);
@@ -3584,7 +3584,7 @@ Value getliquidityinfo(const Array& params, bool fHelp)
 
     unsigned char cUnit = params[0].get_str()[0];
 
-    if (!ValidUnit(cUnit) || cUnit == 'S')
+    if (!IsValidCurrency(cUnit))
         throw JSONRPCError(-3, "Invalid currency");
 
     Object result;
@@ -4267,7 +4267,7 @@ Value burn(const Array& params, bool fHelp)
     if (params[1].get_str().size() != 1)
         throw JSONRPCError(-101, "Invalid unit length");
     unsigned char cUnit = params[1].get_str()[0];
-    if (!ValidUnit(cUnit))
+    if (!IsValidUnit(cUnit))
         throw JSONRPCError(-101, "Invalid unit");
 
     CWallet* pwallet = GetWallet(cUnit);
