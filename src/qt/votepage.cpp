@@ -177,7 +177,7 @@ void VotePage::updateLiquidity()
     {
         LOCK(cs_mapLiquidityInfo);
 
-        BOOST_FOREACH(const PAIRTYPE(const CBitcoinAddress, CLiquidityInfo)& item, mapLiquidityInfo)
+        BOOST_FOREACH(const PAIRTYPE(const CLiquiditySource, CLiquidityInfo)& item, mapLiquidityInfo)
         {
             const CLiquidityInfo& info = item.second;
             LiquidityTotal& total = totalMap[info.cUnit];

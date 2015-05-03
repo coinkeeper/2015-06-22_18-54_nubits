@@ -3524,7 +3524,10 @@ Value liquidityinfo(const Array& params, bool fHelp)
     }
 
     CLiquidityInfo info;
-    info.nVersion = PROTOCOL_VERSION;
+    if (pindexBest->nProtocolVersion >= PROTOCOL_V2_0)
+        info.nVersion = PROTOCOL_V2_0;
+    else
+        info.nVersion = 50000;
     info.cUnit = cUnit;
     info.nTime = GetAdjustedTime();
     info.nBuyAmount = roundint64(params[1].get_real() * COIN);
@@ -3533,18 +3536,25 @@ Value liquidityinfo(const Array& params, bool fHelp)
     string sIdentifier;
     if (params.size() > 4)
         sIdentifier = params[4].get_str();
+    if (info.nVersion >= PROTOCOL_V2_0)
+        info.sIdentifier = sIdentifier;
 
-    LOCK(cs_mapLiquidity);
-    mapLiquidity[sIdentifier] = info;
-
-    BOOST_FOREACH(const PAIRTYPE(string, CLiquidityInfo)& otherInfoPair, mapLiquidity)
+    // Old process: liquidity identifiers were kept in memory and summed before the info was sent
+    // To remove when the network definitively switched to 2.0
+    if (info.nVersion < PROTOCOL_V2_0)
     {
-        const string& otherIdentifier = otherInfoPair.first;
-        if (otherIdentifier != sIdentifier)
+        LOCK(cs_mapLiquidity);
+        mapLiquidity[sIdentifier] = info;
+
+        BOOST_FOREACH(const PAIRTYPE(string, CLiquidityInfo)& otherInfoPair, mapLiquidity)
         {
-            const CLiquidityInfo& otherInfo = otherInfoPair.second;
-            info.nBuyAmount += otherInfo.nBuyAmount;
-            info.nSellAmount += otherInfo.nSellAmount;
+            const string& otherIdentifier = otherInfoPair.first;
+            if (otherIdentifier != sIdentifier)
+            {
+                const CLiquidityInfo& otherInfo = otherInfoPair.second;
+                info.nBuyAmount += otherInfo.nBuyAmount;
+                info.nSellAmount += otherInfo.nSellAmount;
+            }
         }
     }
 
@@ -3596,7 +3606,7 @@ Value getliquidityinfo(const Array& params, bool fHelp)
     {
         LOCK(cs_mapLiquidityInfo);
 
-        BOOST_FOREACH(const PAIRTYPE(const CBitcoinAddress, CLiquidityInfo)& item, mapLiquidityInfo)
+        BOOST_FOREACH(const PAIRTYPE(const CLiquiditySource, CLiquidityInfo)& item, mapLiquidityInfo)
         {
             const CLiquidityInfo& info = item.second;
             if (info.cUnit == cUnit)
@@ -3604,7 +3614,7 @@ Value getliquidityinfo(const Array& params, bool fHelp)
                 Object custodianInfo;
                 custodianInfo.push_back(Pair("buy", ValueFromAmount(info.nBuyAmount)));
                 custodianInfo.push_back(Pair("sell", ValueFromAmount(info.nSellAmount)));
-                result.push_back(Pair(info.GetCustodianAddress().ToString(), custodianInfo));
+                result.push_back(Pair(info.GetCustodianAddress().ToString() + " " + info.sIdentifier, custodianInfo));
 
                 nBuyAmount += info.nBuyAmount;
                 nSellAmount += info.nSellAmount;

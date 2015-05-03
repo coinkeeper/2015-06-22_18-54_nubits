@@ -1853,9 +1853,11 @@ bool Reorganize(CTxDB& txdb, CBlockIndex* pindexNew)
             BOOST_FOREACH(const CCustodianVote& custodianVote, pindex->vElectedCustodian)
             {
                 const CBitcoinAddress& address(custodianVote.GetAddress());
-                LOCK2(cs_mapElectedCustodian, cs_mapLiquidityInfo);
-                mapElectedCustodian.erase(address);
-                mapLiquidityInfo.erase(address);
+                {
+                    LOCK(cs_mapElectedCustodian);
+                    mapElectedCustodian.erase(address);
+                }
+                RemoveLiquidityInfoFromCustodian(address);
             }
         }
         BOOST_FOREACH(CBlockIndex* pindex, vConnect)
@@ -3333,7 +3335,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         // nu: Relay liquidity info
         {
             LOCK(cs_mapLiquidityInfo);
-            BOOST_FOREACH(PAIRTYPE(const CBitcoinAddress, CLiquidityInfo)& item, mapLiquidityInfo)
+            BOOST_FOREACH(PAIRTYPE(const CLiquiditySource, CLiquidityInfo)& item, mapLiquidityInfo)
                 item.second.RelayTo(pfrom);
         }
 

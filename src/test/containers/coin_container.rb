@@ -58,6 +58,7 @@ class CoinContainer
       keypool: 1,
       stakegen: false,
       unpark: false,
+      checkblocks: -1,
     }
 
     args = default_args.merge(options[:args] || {})

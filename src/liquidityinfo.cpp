@@ -11,7 +11,7 @@
 
 using namespace std;
 
-map<const CBitcoinAddress, CLiquidityInfo> mapLiquidityInfo;
+map<const CLiquiditySource, CLiquidityInfo> mapLiquidityInfo;
 CCriticalSection cs_mapLiquidityInfo;
 int64 nLastLiquidityUpdate = 0;
 
@@ -38,18 +38,20 @@ bool CLiquidityInfo::ProcessLiquidityInfo()
     if (!CheckSignature())
         return false;
 
+    CLiquiditySource source(address, sIdentifier);
+
     {
         LOCK(cs_mapLiquidityInfo);
 
-        map<const CBitcoinAddress, CLiquidityInfo>::iterator it;
-        it = mapLiquidityInfo.find(address);
+        map<const CLiquiditySource, CLiquidityInfo>::iterator it;
+        it = mapLiquidityInfo.find(source);
         if (it != mapLiquidityInfo.end())
         {
             if (it->second.nTime >= nTime)
                 return false;
         }
 
-        mapLiquidityInfo[address] = *this;
+        mapLiquidityInfo[source] = *this;
         nLastLiquidityUpdate = GetAdjustedTime();
     }
 
@@ -65,14 +67,41 @@ void RemoveExpiredLiquidityInfo(int nCurrentHeight)
         LOCK(cs_mapLiquidityInfo);
         LOCK2(cs_main, cs_mapElectedCustodian);
 
-        map<const CBitcoinAddress, CLiquidityInfo>::iterator it;
+        map<const CLiquiditySource, CLiquidityInfo>::iterator it;
         it = mapLiquidityInfo.begin();
         while (it != mapLiquidityInfo.end())
         {
-            const CBitcoinAddress& address = it->first;
+            const CBitcoinAddress& address = it->first.custodianAddress;
             CBlockIndex *pindex = mapElectedCustodian[address];
 
             if (nCurrentHeight - pindex->nHeight > LIQUIDITY_INFO_MAX_HEIGHT)
+            {
+                mapLiquidityInfo.erase(it++);
+                fAnyRemoved = true;
+                nLastLiquidityUpdate = GetAdjustedTime();
+            }
+            else
+                it++;
+        }
+    }
+
+    if (fAnyRemoved)
+        MainFrameRepaint();
+}
+
+void RemoveLiquidityInfoFromCustodian(const CBitcoinAddress custodianAddress)
+{
+    bool fAnyRemoved = false;
+    {
+        LOCK(cs_mapLiquidityInfo);
+
+        map<const CLiquiditySource, CLiquidityInfo>::iterator it;
+        it = mapLiquidityInfo.begin();
+        while (it != mapLiquidityInfo.end())
+        {
+            const CBitcoinAddress& address = it->first.custodianAddress;
+
+            if (address == custodianAddress)
             {
                 mapLiquidityInfo.erase(it++);
                 fAnyRemoved = true;

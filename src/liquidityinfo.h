@@ -19,6 +19,7 @@ public:
     int64 nTime;
     int64 nBuyAmount;
     int64 nSellAmount;
+    std::string sIdentifier;
 
     IMPLEMENT_SERIALIZE
     (
@@ -28,6 +29,10 @@ public:
         READWRITE(cUnit);
         READWRITE(nBuyAmount);
         READWRITE(nSellAmount);
+        if (nVersion >= PROTOCOL_V2_0)
+            READWRITE(sIdentifier);
+        else if (fRead)
+            const_cast<CUnsignedLiquidityInfo*>(this)->sIdentifier = "";
     )
 
     void SetNull()
@@ -134,7 +139,7 @@ public:
             return error("CLiquidityInfo::CheckSignature() : verify signature failed");
 
         // Now unserialize the data
-        CDataStream sMsg(vchMsg, SER_NETWORK, PROTOCOL_VERSION);
+        CDataStream sMsg(vchMsg, SER_NETWORK, nVersion);
         sMsg >> *(CUnsignedLiquidityInfo*)this;
         return true;
     }
@@ -147,10 +152,34 @@ public:
     }
 };
 
-extern std::map<const CBitcoinAddress, CLiquidityInfo> mapLiquidityInfo;
+struct CLiquiditySource
+{
+    CBitcoinAddress custodianAddress;
+    std::string sIdentifier;
+
+    CLiquiditySource(CBitcoinAddress custodianAddress, std::string sIdentifier) :
+        custodianAddress(custodianAddress),
+        sIdentifier(sIdentifier)
+    {
+    }
+
+    bool operator< (const CLiquiditySource& other) const
+    {
+        if (custodianAddress < other.custodianAddress)
+            return true;
+        if (custodianAddress > other.custodianAddress)
+            return false;
+        if (sIdentifier < other.sIdentifier)
+            return true;
+        return false;
+    }
+};
+
+extern std::map<const CLiquiditySource, CLiquidityInfo> mapLiquidityInfo;
 extern CCriticalSection cs_mapLiquidityInfo;
 extern int64 nLastLiquidityUpdate;
 
 void RemoveExpiredLiquidityInfo(int nCurrentHeight);
+void RemoveLiquidityInfoFromCustodian(const CBitcoinAddress address);
 
 #endif
