@@ -11,13 +11,22 @@ Feature: Split money supply
     Then "NuShare" money supply on node "B" should increase by "40" when node "A" finds a block
     And "NuBit" money supply on node "B" should increase by "0" when node "A" finds a block
 
-  Scenario: Money supply after a custodian is elected
+  Scenario: Money supply after a NuBits custodian is elected
     Given a network with nodes "A" and "B" able to mint
     When node "B" generates a NuBit address "cust"
     And node "A" votes an amount of "1,000,000" for custodian "cust"
     And node "A" finds blocks until custodian "cust" is elected
     Then the "NuShare" supply should be between "1,000,000,000" and "1,000,100,000"
     And the "NuBit" supply should be "1,000,000"
+
+  Scenario: Money supply after a NuShares custodian is elected
+    Given a network with nodes "A" and "B" able to mint
+    And the nodes travel to the Nu protocol v06 switch time
+    When node "B" generates a NuShares address "cust"
+    And node "A" votes an amount of "10,000,000" for custodian "cust"
+    And node "A" finds blocks until custodian "cust" is elected
+    Then the "NuShare" supply should be between "1,010,000,000" and "1,010,100,000"
+    And the "NuBit" supply should be "0"
 
   Scenario: NuBit money supply after parking and unparking
     Given a network with nodes "Alice" and "Bob" able to mint

@@ -168,6 +168,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake);
 #endif
 bool GetTransaction(const uint256 &hash, CTransaction &tx, uint256 &hashBlock);
 bool IsNuProtocolV05(int64 nTimeBlock);
+bool IsNuProtocolV06(int64 nTimeBlock);
 
 
 inline int GetMaturity(bool fProofOfStake)
@@ -597,9 +598,12 @@ public:
         return (cUnit == 'S' && vin.size() > 0 && (!vin[0].prevout.IsNull()) && vout.size() >= 2 && vout[0].IsEmpty());
     }
 
-    bool IsCurrencyCoinBase() const
+    bool IsCustodianGrant() const
     {
-        return (cUnit != 'S' && vin.size() == 1 && vin[0].prevout.IsNull() && vout.size() >= 1);
+        if (cUnit == 'S' && IsNuProtocolV06(nTime))
+            return (vin.size() == 1 && vin[0].prevout.hash == 0 && vin[0].prevout.n == -2 && vout.size() >= 1);
+        else
+            return (cUnit != 'S' && vin.size() == 1 && vin[0].prevout.IsNull() && vout.size() >= 1);
     }
 
     bool IsParked(unsigned int nOut) const

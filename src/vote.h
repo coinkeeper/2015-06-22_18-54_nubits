@@ -23,6 +23,7 @@ public:
     bool fScript;
     uint160 hashAddress;
     int64 nAmount;
+    // TODO
 
     CCustodianVote() :
         cUnit('?'),

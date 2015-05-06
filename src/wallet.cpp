@@ -578,7 +578,7 @@ int CWalletTx::GetRequestCount() const
     int nRequests = -1;
     {
         LOCK(pwallet->cs_wallet);
-        if (IsCoinBase() || IsCoinStake() || IsCurrencyCoinBase())
+        if (IsCoinBase() || IsCoinStake() || IsCustodianGrant())
         {
             // Generated block
             if (hashBlock != 0)
@@ -888,14 +888,14 @@ void CWalletTx::RelayWalletTransaction(CTxDB& txdb)
 {
     BOOST_FOREACH(const CMerkleTx& tx, vtxPrev)
     {
-        if (!(tx.IsCoinBase() || tx.IsCoinStake() || tx.IsCurrencyCoinBase()))
+        if (!(tx.IsCoinBase() || tx.IsCoinStake() || tx.IsCustodianGrant()))
         {
             uint256 hash = tx.GetHash();
             if (!txdb.ContainsTx(hash))
                 RelayMessage(CInv(MSG_TX, hash), (CTransaction)tx);
         }
     }
-    if (!(IsCoinBase() || IsCoinStake() || IsCurrencyCoinBase()))
+    if (!(IsCoinBase() || IsCoinStake() || IsCustodianGrant()))
     {
         uint256 hash = GetHash();
         if (!txdb.ContainsTx(hash))

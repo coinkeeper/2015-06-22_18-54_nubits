@@ -214,7 +214,13 @@ CVote ParseVote(const Object& objVote)
                             throw runtime_error("Invalid address");
 
                         custodianVote.SetAddress(address);
-                        if (custodianVote.cUnit == 'S' || !ValidUnit(custodianVote.cUnit))
+                        // TODO here we need to check the vote.nEffectiveProtocol
+                        // to enable NSR grants. For now leave it without check for testing.
+                        // This was the original branch
+                        // if (custodianVote.cUnit == 'S' || !ValidUnit(custodianVote.cUnit))
+                        // and this is the proposed branch
+                        // if ((vote.nEffectiveProtocol < 60000 && custodianVote.cUnit == 'S') || !ValidUnit(custodianVote.cUnit))
+                        if (!ValidUnit(custodianVote.cUnit))
                             throw runtime_error("Invalid custodian unit");
                     }
                     else if (custodianVoteAttribute.name_ == "amount")

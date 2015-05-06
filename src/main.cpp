@@ -26,9 +26,18 @@ using namespace boost;
 unsigned int nNuProtocolV05SwitchTime     = 1415368800; // 2014-11-07 14:00:00 UTC
 unsigned int nNuProtocolV05TestSwitchTime = 1414195200; // 2014-10-25 00:00:00 UTC
 
+// TODO redefine v06 switch times, those are for testing
+unsigned int nNuProtocolV06SwitchTime     = 1433116800; // 2015-06-01 00:00:00 UTC
+unsigned int nNuProtocolV06TestSwitchTime = 1431648000; // 2015-05-15 00:00:00 UTC
+
 bool IsNuProtocolV05(int64 nTimeBlock)
 {
     return (nTimeBlock >= (fTestNet? nNuProtocolV05TestSwitchTime : nNuProtocolV05SwitchTime));
+}
+
+bool IsNuProtocolV06(int64 nTimeBlock)
+{
+    return (nTimeBlock >= (fTestNet? nNuProtocolV06TestSwitchTime : nNuProtocolV06SwitchTime));
 }
 
 CCriticalSection cs_setpwalletRegistered;
@@ -403,7 +412,7 @@ bool CTransaction::AreInputsSameUnit(const MapPrevTx& mapInputs) const
 //
 bool CTransaction::AreInputsStandard(const MapPrevTx& mapInputs) const
 {
-    if (IsCoinBase() || IsCurrencyCoinBase())
+    if (IsCoinBase() || IsCustodianGrant())
         return true; // Coinbases don't use vin normally
 
     for (unsigned int i = 0; i < vin.size(); i++)
@@ -611,7 +620,7 @@ bool CTransaction::CheckTransaction() const
     for (int i = 0; i < vout.size(); i++)
     {
         const CTxOut& txout = vout[i];
-        if (txout.IsEmpty() && (!IsCoinBase()) && (!IsCoinStake()) && (!IsCurrencyCoinBase()))
+        if (txout.IsEmpty() && (!IsCoinBase()) && (!IsCoinStake()) && (!IsCustodianGrant()))
             return DoS(100, error("CTransaction::CheckTransaction() : txout empty for user transaction"));
         // ppcoin: enforce minimum output amount
         if ((!txout.IsEmpty()) && txout.nValue < GetMinTxOutAmount())
@@ -645,7 +654,7 @@ bool CTransaction::CheckTransaction() const
         if (vin[0].scriptSig.size() < 2 || vin[0].scriptSig.size() > 100)
             return DoS(100, error("CTransaction::CheckTransaction() : coinbase script size"));
     }
-    else if (IsCurrencyCoinBase())
+    else if (IsCustodianGrant())
     {
         // nubit: no script allowed in currency coinbase
         if (vin[0].scriptSig.size() != 0)
@@ -723,7 +732,7 @@ bool CTxMemPool::accept(CTxDB& txdb, CTransaction &tx, bool fCheckInputs,
     if (tx.IsCoinStake())
         return tx.DoS(100, error("CTxMemPool::accept() : coinstake as individual tx"));
     // nubit: CurrencyCoinBase is also only valid in a block
-    if (tx.IsCurrencyCoinBase())
+    if (tx.IsCustodianGrant())
         return tx.DoS(100, error("CTxMemPool::accept() : currency coinbase as individual tx"));
 
     // To help v0.1.5 clients who would see it as a negative number
@@ -965,7 +974,7 @@ bool CWalletTx::AcceptWalletTransaction(CTxDB& txdb, bool fCheckInputs)
         // Add previous supporting transactions first
         BOOST_FOREACH(CMerkleTx& tx, vtxPrev)
         {
-            if (!(tx.IsCoinBase() || tx.IsCoinStake() || tx.IsCurrencyCoinBase()))
+            if (!(tx.IsCoinBase() || tx.IsCoinStake() || tx.IsCustodianGrant()))
             {
                 uint256 hash = tx.GetHash();
                 if (!mempool.exists(hash) && !txdb.ContainsTx(hash))
@@ -1236,7 +1245,7 @@ void CBlock::UpdateTime(const CBlockIndex* pindexPrev)
 bool CTransaction::DisconnectInputs(CTxDB& txdb)
 {
     // Relinquish previous transactions' spent pointers
-    if (!IsCoinBase() && !IsCurrencyCoinBase())
+    if (!IsCoinBase() && !IsCustodianGrant())
     {
         BOOST_FOREACH(const CTxIn& txin, vin)
         {
@@ -1278,7 +1287,7 @@ bool CTransaction::FetchInputs(CTxDB& txdb, const map<uint256, CTxIndex>& mapTes
     // be dropped).  If tx is definitely invalid, fInvalid will be set to true.
     fInvalid = false;
 
-    if (IsCoinBase() || IsCurrencyCoinBase())
+    if (IsCoinBase() || IsCustodianGrant())
         return true; // Coinbase transactions have no inputs to fetch.
 
     for (unsigned int i = 0; i < vin.size(); i++)
@@ -1359,7 +1368,7 @@ const CTxOut& CTransaction::GetOutputFor(const CTxIn& input, const MapPrevTx& in
 
 int64 CTransaction::GetValueIn(const MapPrevTx& inputs) const
 {
-    if (IsCoinBase() || IsCurrencyCoinBase())
+    if (IsCoinBase() || IsCustodianGrant())
         return 0;
 
     int64 nResult = 0;
@@ -1373,7 +1382,7 @@ int64 CTransaction::GetValueIn(const MapPrevTx& inputs) const
 
 unsigned int CTransaction::GetP2SHSigOpCount(const MapPrevTx& inputs) const
 {
-    if (IsCoinBase() || IsCurrencyCoinBase())
+    if (IsCoinBase() || IsCustodianGrant())
         return 0;
 
     unsigned int nSigOps = 0;
@@ -1394,7 +1403,7 @@ bool CTransaction::ConnectInputs(CTxDB& txdb, MapPrevTx inputs,
     // fBlock is true when this is called from AcceptBlock when a new best-block is added to the blockchain
     // fMiner is true when called from the internal bitcoin miner
     // ... both are false when called from CTransaction::AcceptToMemoryPool
-    if (!IsCoinBase() && !IsCurrencyCoinBase())
+    if (!IsCoinBase() && !IsCustodianGrant())
     {
         int64 nValueIn = 0;
         int64 nFees = 0;
@@ -1550,7 +1559,7 @@ bool CTransaction::ConnectInputs(CTxDB& txdb, MapPrevTx inputs,
 
 bool CTransaction::ClientConnectInputs()
 {
-    if (IsCoinBase() || IsCurrencyCoinBase())
+    if (IsCoinBase() || IsCustodianGrant())
         return false;
 
     // Take over previous transactions' spent pointers
@@ -1674,7 +1683,7 @@ bool CBlock::ConnectBlock(CTxDB& txdb, CBlockIndex* pindex)
         nTxPos += ::GetSerializeSize(tx, SER_DISK, CLIENT_VERSION);
 
         MapPrevTx mapInputs;
-        if (tx.IsCoinBase() || tx.IsCurrencyCoinBase())
+        if (tx.IsCoinBase() || tx.IsCustodianGrant())
             mapValueOut[tx.cUnit] += tx.GetValueOut();
         else
         {
@@ -1800,7 +1809,7 @@ bool Reorganize(CTxDB& txdb, CBlockIndex* pindexNew)
 
         // Queue memory transactions to resurrect
         BOOST_FOREACH(const CTransaction& tx, block.vtx)
-            if (!(tx.IsCoinBase() || tx.IsCoinStake() || tx.IsCurrencyCoinBase()))
+            if (!(tx.IsCoinBase() || tx.IsCoinStake() || tx.IsCustodianGrant()))
                 vResurrect.push_back(tx);
     }
 
@@ -2018,7 +2027,7 @@ bool CTransaction::GetCoinAge(CTxDB& txdb, int64& nCoinAge) const
     CBigNum bnCentSecond = 0;  // coin age in the unit of cent-seconds
     nCoinAge = 0;
 
-    if (IsCoinBase() || IsCurrencyCoinBase())
+    if (IsCoinBase() || IsCustodianGrant())
         return true;
 
     BOOST_FOREACH(const CTxIn& txin, vin)
@@ -2170,7 +2179,7 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
     // nubit: save elected custodians
     BOOST_FOREACH(const CTransaction& tx, vtx)
     {
-        if (tx.IsCurrencyCoinBase())
+        if (tx.IsCustodianGrant())
         {
             if (tx.vout.size() < 1)
                 return error("Not enough outputs in currency coinbase");
@@ -2389,7 +2398,7 @@ bool CBlock::AcceptBlock()
         vector<CTransaction> vActualCurrencyCoinBase;
         BOOST_FOREACH(const CTransaction& tx, vtx)
         {
-            if (tx.IsCurrencyCoinBase())
+            if (tx.IsCustodianGrant())
                 vActualCurrencyCoinBase.push_back(tx);
         }
         if (vActualCurrencyCoinBase.size() != vExpectedCurrencyCoinBase.size())
@@ -4342,7 +4351,7 @@ CBlock* CreateNewBlock(CReserveKey& reservekey, CWallet* pwallet, bool fProofOfS
         for (map<uint256, CTransaction>::iterator mi = mempool.mapTx.begin(); mi != mempool.mapTx.end(); ++mi)
         {
             CTransaction& tx = (*mi).second;
-            if (tx.IsCoinBase() || tx.IsCoinStake() || tx.IsCurrencyCoinBase() || !tx.IsFinal())
+            if (tx.IsCoinBase() || tx.IsCoinStake() || tx.IsCustodianGrant() || !tx.IsFinal())
                 continue;
 
             if (pblock->IsProofOfStake() && !tx.CheckParkWithResult(vParkRateResult))

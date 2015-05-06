@@ -253,18 +253,19 @@ Then(/^nodes? (.+) (?:should be at|should reach|reach|reaches|is at|are at) bloc
   end
 end
 
-When(/^node "(.*?)" reaches block "(.*?)"$/) do |arg1, arg2|
-  node = @nodes[arg1]
-  block = @blocks[arg2]
-  begin
-    wait_for do
-      expect(node.top_hash).to eq(block)
-    end
-  rescue Exception
-    p @blocks
-    raise
-  end
-end
+# ^^^^ THIS IS THE SAME LIKE THE ABOVE ^^^^ Remove it?
+# When(/^node "(.*?)" reaches block "(.*?)"$/) do |arg1, arg2|
+#   node = @nodes[arg1]
+#   block = @blocks[arg2]
+#   begin
+#     wait_for do
+#       expect(node.top_hash).to eq(block)
+#     end
+#   rescue Exception
+#     p @blocks
+#     raise
+#   end
+# end
 
 Then(/^node "(.*?)" should stay at block "(.*?)"$/) do |arg1, arg2|
   node = @nodes[arg1]
@@ -553,7 +554,14 @@ Then(/^(?:node |)"(.*?)" should have "(.*?)" NuBits parked$/) do |arg1, arg2|
 end
 
 When(/^the nodes travel to the Nu protocol v(\d+) switch time$/) do |arg1|
-  switch_time = Time.at(1414195200)
+  if arg1.to_i == 5
+    switch_time = Time.at(1414195200)
+  elsif arg1.to_i == 6
+    # TODO redefine v06 switch time
+    switch_time = Time.at(1431648000)
+  else
+    raise
+  end
   @nodes.values.each do |node|
     time = Time.parse(node.info["time"])
     node.rpc("timetravel", (switch_time - time).round)

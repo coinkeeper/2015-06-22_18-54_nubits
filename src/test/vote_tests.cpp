@@ -394,8 +394,6 @@ BOOST_AUTO_TEST_CASE(vote_validity_tests)
     BOOST_CHECK(vote.IsValid());
 
     // Another unit is invalid
-    vote.vCustodianVote[0].cUnit = 'S';
-    BOOST_CHECK(!vote.IsValid());
     vote.vCustodianVote[0].cUnit = 'A';
     BOOST_CHECK(!vote.IsValid());
     vote.vCustodianVote[0].cUnit = 'B';
@@ -413,6 +411,14 @@ BOOST_AUTO_TEST_CASE(vote_validity_tests)
     vote.vCustodianVote[0].hashAddress++;
     BOOST_CHECK(vote.IsValid());
     vote.vCustodianVote[0].hashAddress--;
+}
+
+void printVotes(vector<CVote> vVote)
+{
+    BOOST_FOREACH(const CVote& vote, vVote)
+        BOOST_FOREACH(const CCustodianVote& custodianVote, vote.vCustodianVote)
+            printf("addr=%d, amount=%d, weight=%d, unit=%c\n", custodianVote.hashAddress.Get64(), custodianVote.nAmount, vote.nCoinAgeDestroyed, custodianVote.cUnit);
+    printf("\n");
 }
 
 BOOST_AUTO_TEST_CASE(create_currency_coin_bases)
@@ -458,11 +464,11 @@ BOOST_AUTO_TEST_CASE(create_currency_coin_bases)
     vote.nCoinAgeDestroyed = 1;
     vVote.push_back(vote);
 
-    // This custodian should win and currecy should be created
+    // This custodian should win and currency should be created
     BOOST_CHECK(GenerateCurrencyCoinBases(vVote, mapAlreadyElected, vCurrencyCoinBase));
     BOOST_CHECK_EQUAL(1, vCurrencyCoinBase.size());
     CTransaction& tx = vCurrencyCoinBase[0];
-    BOOST_CHECK(tx.IsCurrencyCoinBase());
+    BOOST_CHECK(tx.IsCustodianGrant());
     BOOST_CHECK_EQUAL('B', tx.cUnit);
     BOOST_CHECK_EQUAL(1, tx.vout.size());
     BOOST_CHECK_EQUAL(8 * COIN, tx.vout[0].nValue);
@@ -490,7 +496,7 @@ BOOST_AUTO_TEST_CASE(create_currency_coin_bases)
     BOOST_CHECK(GenerateCurrencyCoinBases(vVote, mapAlreadyElected, vCurrencyCoinBase));
     BOOST_CHECK_EQUAL(1, vCurrencyCoinBase.size());
     tx = vCurrencyCoinBase[0];
-    BOOST_CHECK(tx.IsCurrencyCoinBase());
+    BOOST_CHECK(tx.IsCustodianGrant());
     BOOST_CHECK_EQUAL('B', tx.cUnit);
     BOOST_CHECK_EQUAL(2, tx.vout.size());
     BOOST_CHECK_EQUAL(8 * COIN, tx.vout[0].nValue);
@@ -506,26 +512,61 @@ BOOST_AUTO_TEST_CASE(create_currency_coin_bases)
     vVote[1].vCustodianVote.back().hashAddress = hashAddress;
     vVote[2].vCustodianVote.back().hashAddress = hashAddress;
 
-    /*
-    BOOST_FOREACH(const CVote& vote, vVote)
-        BOOST_FOREACH(const CCustodianVote& custodianVote, vote.vCustodianVote)
-            printf("addr=%d, amount=%d, weight=%d\n", custodianVote.hashAddress.Get64(), custodianVote.nAmount, vote.nCoinAgeDestroyed);
-    */
+//    printVotes(vVote);
 
     // Only the amount with the highest coin age is granted
     BOOST_CHECK(GenerateCurrencyCoinBases(vVote, mapAlreadyElected, vCurrencyCoinBase));
     BOOST_CHECK_EQUAL(1, vCurrencyCoinBase.size());
 
     tx = vCurrencyCoinBase[0];
-    BOOST_CHECK(tx.IsCurrencyCoinBase());
+    BOOST_CHECK(tx.IsCustodianGrant());
     BOOST_CHECK_EQUAL('B', tx.cUnit);
     BOOST_CHECK_EQUAL(1, tx.vout.size());
     BOOST_CHECK_EQUAL(5 * COIN, tx.vout[0].nValue);
     BOOST_CHECK(ExtractDestination(tx.vout[0].scriptPubKey, address));
     BOOST_CHECK_EQUAL(uint160(1).ToString(), boost::get<CKeyID>(address).ToString());
 
-    // If any vote is invalid the generation should fail
+    // NuShare grants are valid now
+    vVote[0].vCustodianVote.back().cUnit = 'S';
     vVote[1].vCustodianVote.back().cUnit = 'S';
+    vVote[2].vCustodianVote.back().cUnit = 'S';
+    BOOST_CHECK(GenerateCurrencyCoinBases(vVote, mapAlreadyElected, vCurrencyCoinBase));
+    BOOST_CHECK_EQUAL(1, vCurrencyCoinBase.size());
+    tx = vCurrencyCoinBase[0];
+    tx.nTime = 2000000000; // set a time that is after V06 switch time
+    BOOST_CHECK(tx.IsCustodianGrant());
+    BOOST_CHECK(!tx.IsCoinBase());
+    BOOST_CHECK_EQUAL('S', tx.cUnit);
+    BOOST_CHECK_GE(2, tx.vout.size()); // NSR currency coin base has an empty first output
+    BOOST_CHECK_EQUAL(5 * COIN, tx.vout[0].nValue);
+    BOOST_CHECK(ExtractDestination(tx.vout[0].scriptPubKey, address));
+    BOOST_CHECK_EQUAL(uint160(1).ToString(), boost::get<CKeyID>(address).ToString());
+
+    // Check if both NSR and NBT grants can happen
+    vVote[2].vCustodianVote.back().cUnit = 'B';
+
+    // Should NSR and NBT
+    BOOST_CHECK(GenerateCurrencyCoinBases(vVote, mapAlreadyElected, vCurrencyCoinBase));
+    BOOST_CHECK_EQUAL(2, vCurrencyCoinBase.size());
+    tx = vCurrencyCoinBase[0];
+    BOOST_CHECK(tx.IsCustodianGrant());
+    BOOST_CHECK_EQUAL('B', tx.cUnit);
+    BOOST_CHECK_EQUAL(1, tx.vout.size());
+    BOOST_CHECK_EQUAL(8 * COIN, tx.vout[0].nValue);
+    BOOST_CHECK(ExtractDestination(tx.vout[0].scriptPubKey, address));
+    BOOST_CHECK_EQUAL(uint160(1).ToString(), boost::get<CKeyID>(address).ToString());
+    tx = vCurrencyCoinBase[1];
+    tx.nTime = 2000000000; // set a time that is after V06 switch time
+    BOOST_CHECK(tx.IsCustodianGrant());
+    BOOST_CHECK(!tx.IsCoinBase());
+    BOOST_CHECK_EQUAL('S', tx.cUnit);
+    BOOST_CHECK_GE(2, tx.vout.size()); // NSR currency coin base has an empty first output
+    BOOST_CHECK_EQUAL(5 * COIN, tx.vout[0].nValue);
+    BOOST_CHECK(ExtractDestination(tx.vout[0].scriptPubKey, address));
+    BOOST_CHECK_EQUAL(uint160(1).ToString(), boost::get<CKeyID>(address).ToString());
+
+    // Unknown units should fail
+    vVote[1].vCustodianVote.back().cUnit = '?';
     BOOST_CHECK(!GenerateCurrencyCoinBases(vVote, mapAlreadyElected, vCurrencyCoinBase));
     BOOST_CHECK_EQUAL(0, vCurrencyCoinBase.size());
 }

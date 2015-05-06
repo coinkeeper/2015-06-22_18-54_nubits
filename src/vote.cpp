@@ -362,9 +362,14 @@ bool CParkRate::IsValid() const
 
 bool CCustodianVote::IsValid() const
 {
-    if (cUnit == 'S')
-        return false;
-    if (cUnit != 'B')
+    // TODO here we need to check the CVote::nEffectiveProtocol
+    // to enable NSR grants. For now leave it without check for testing.
+    // Original branches
+//    if (cUnit == 'S')
+//        return false;
+//    if (cUnit != 'B')
+//        return false;
+    if (!ValidUnit(cUnit))
         return false;
     if (!MoneyRange(nAmount))
         return false;
@@ -498,7 +503,10 @@ bool GenerateCurrencyCoinBases(const std::vector<CVote> vVote, const std::map<CB
 
         CTransaction tx;
         tx.cUnit = cUnit;
-        tx.vin.push_back(CTxIn());
+        if (cUnit == 'S')
+            tx.vin.push_back(CTxIn(0, -2));
+        else
+            tx.vin.push_back(CTxIn());
 
         BOOST_FOREACH(const GrantedAmountMap::value_type& grantedAmount, mapGrantedAmount)
         {
