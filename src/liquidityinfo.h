@@ -59,13 +59,33 @@ public:
                 "    nTime        = %"PRI64d"\n"
                 "    nBuyAmount   = %s\n"
                 "    nSellAmount  = %s\n"
+                "    sIdentifier  = %s\n"
                 ")\n",
             nVersion,
             cUnit,
             GetCustodianString().c_str(),
             nTime,
             FormatMoney(nBuyAmount).c_str(),
-            FormatMoney(nSellAmount).c_str());
+            FormatMoney(nSellAmount).c_str(),
+            sIdentifier.c_str());
+    }
+
+    bool IsValid() const
+    {
+        if (cUnit != 'B')
+            return false;
+
+        if (sIdentifier.length() > 255)
+            return false;
+
+        for (std::string::size_type i=0; i<sIdentifier.length(); ++i)
+        {
+            const unsigned char& chr = sIdentifier[i];
+            if (chr < 0x20 || chr > 0x7e) // only printable ASCII is allowed
+                return false;
+        }
+
+        return true;
     }
 
     void print() const

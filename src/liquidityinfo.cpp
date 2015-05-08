@@ -38,6 +38,9 @@ bool CLiquidityInfo::ProcessLiquidityInfo()
     if (!CheckSignature())
         return false;
 
+    if (!IsValid())
+        return false;
+
     CLiquiditySource source(address, sIdentifier);
 
     {
