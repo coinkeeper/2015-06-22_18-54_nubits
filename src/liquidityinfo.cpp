@@ -9,11 +9,47 @@
 
 #define LIQUIDITY_INFO_MAX_HEIGHT 260000 // Liquidity info from custodians who were elected more than LIQUIDITY_INFO_MAX_HEIGHT blocks ago are ignored
 
+#ifdef TESTING
+#define MAX_LIQUIDITY_INFO_PER_CUSTODIAN 5
+#else
+#define MAX_LIQUIDITY_INFO_PER_CUSTODIAN 100
+#endif
+
 using namespace std;
 
 map<const CLiquiditySource, CLiquidityInfo> mapLiquidityInfo;
 CCriticalSection cs_mapLiquidityInfo;
 int64 nLastLiquidityUpdate = 0;
+
+void RemoveExtraLiquidityInfo(const CBitcoinAddress& custodianAddress)
+{
+    LOCK(cs_mapLiquidityInfo);
+
+    int nCount = 0;
+    map<int64, map<const CLiquiditySource, CLiquidityInfo>::iterator> mapLiquidityInfoByTime;
+
+    map<const CLiquiditySource, CLiquidityInfo>::iterator it = mapLiquidityInfo.begin();
+    while (it != mapLiquidityInfo.end())
+    {
+        const CLiquidityInfo& info = it->second;
+        const CBitcoinAddress& infoAddress = info.GetCustodianAddress();
+
+        if (infoAddress == custodianAddress)
+        {
+            nCount++;
+            mapLiquidityInfoByTime[info.nTime] = it;
+        }
+        it++;
+    }
+
+    if (nCount && nCount > MAX_LIQUIDITY_INFO_PER_CUSTODIAN)
+    {
+        const map<const CLiquiditySource, CLiquidityInfo>::iterator& oldestit = mapLiquidityInfoByTime.begin()->second;
+        const CLiquidityInfo& oldestInfo = oldestit->second;
+        printf("Custodian %s has too many liquidity info. Removing the oldest one: %s\n", custodianAddress.ToString().c_str(), oldestInfo.ToString().c_str());
+        mapLiquidityInfo.erase(oldestit);
+    }
+}
 
 bool CLiquidityInfo::ProcessLiquidityInfo()
 {
@@ -62,6 +98,9 @@ bool CLiquidityInfo::ProcessLiquidityInfo()
     }
 
     printf("accepted liquidity info from %s\n", address.ToString().c_str());
+
+    RemoveExtraLiquidityInfo(address);
+
     MainFrameRepaint();
     return true;
 }
