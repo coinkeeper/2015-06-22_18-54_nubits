@@ -134,7 +134,7 @@
           </attribute>
           <column>
            <property name="text">
-            <string>Currency</string>
+            <string>Tier</string>
            </property>
           </column>
           <column>
