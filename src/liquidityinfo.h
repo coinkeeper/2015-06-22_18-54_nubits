@@ -92,6 +92,8 @@ public:
     {
         printf("%s", ToString().c_str());
     }
+
+    std::string GetTier() const;
 };
 
 class CLiquidityInfo : public CUnsignedLiquidityInfo

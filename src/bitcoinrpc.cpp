@@ -3661,17 +3661,9 @@ Value getliquidityinfo(const Array& params, bool fHelp)
 
                 mapCustodian[info.GetCustodianAddress().ToString()] += liquidity;
 
-                vector<string> items;
-                boost::split(items, info.sIdentifier, boost::is_any_of(":"));
-
-                if (items.size() > 0)
-                {
-                    const string& tierString = items[0];
-                    if (!tierString.empty() && tierString.find_first_not_of("0123456789") == std::string::npos)
-                    {
-                        mapTier[tierString] += liquidity;
-                    }
-                }
+                string tierString = info.GetTier();
+                if (tierString != "")
+                    mapTier[tierString] += liquidity;
             }
         }
     }

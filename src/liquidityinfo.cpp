@@ -2,6 +2,7 @@
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <boost/algorithm/string.hpp>
 
 #include "liquidityinfo.h"
 #include "main.h"
@@ -103,6 +104,20 @@ bool CLiquidityInfo::ProcessLiquidityInfo()
 
     MainFrameRepaint();
     return true;
+}
+
+string CUnsignedLiquidityInfo::GetTier() const
+{
+    vector<string> items;
+    boost::split(items, sIdentifier, boost::is_any_of(":"));
+
+    if (items.size() > 0)
+    {
+        const string& tierString = items[0];
+        if (!tierString.empty() && tierString.find_first_not_of("0123456789") == std::string::npos)
+            return tierString;
+    }
+    return "";
 }
 
 void RemoveExpiredLiquidityInfo(int nCurrentHeight)
