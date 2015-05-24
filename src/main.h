@@ -1254,6 +1254,9 @@ public:
     // nubit: elected custodians
     std::vector<CCustodianVote> vElectedCustodian;
 
+    // nubit: protocol version that applies to this block
+    int nProtocolVersion;
+
     // block header
     int nVersion;
     uint256 hashMerkleRoot;
@@ -1284,6 +1287,7 @@ public:
         vParkRateResult.clear();
         nCoinAgeDestroyed = 0;
         vElectedCustodian.clear();
+        nProtocolVersion = 0;
 
         nVersion       = 0;
         hashMerkleRoot = 0;
@@ -1323,6 +1327,7 @@ public:
         vParkRateResult.clear();
         nCoinAgeDestroyed = 0;
         vElectedCustodian.clear();
+        nProtocolVersion = 0;
 
         nVersion       = block.nVersion;
         hashMerkleRoot = block.hashMerkleRoot;
@@ -1536,6 +1541,11 @@ public:
     (
         if (!(nType & SER_GETHASH))
             READWRITE(nVersion);
+
+        if (nVersion >= PROTOCOL_V2_0)
+            READWRITE(nProtocolVersion);
+        else if (fRead)
+            const_cast<CDiskBlockIndex*>(this)->nProtocolVersion = 0;
 
         READWRITE(hashNext);
         READWRITE(nFile);

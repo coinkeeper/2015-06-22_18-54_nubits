@@ -749,7 +749,7 @@ Value getinfo(const Array& params, bool fHelp)
 
     Object obj;
     obj.push_back(Pair("version",       FormatFullVersion()));
-    obj.push_back(Pair("protocolversion",(int)PROTOCOL_VERSION));
+    obj.push_back(Pair("protocolversion",pindexBest->nProtocolVersion));
     obj.push_back(Pair("walletversion", pwalletMain->GetVersion()));
     obj.push_back(Pair("walletunit",    string(1, pwalletMain->Unit())));
     obj.push_back(Pair("balance",       ValueFromAmount(pwalletMain->GetBalance())));
