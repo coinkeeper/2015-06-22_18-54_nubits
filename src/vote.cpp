@@ -10,18 +10,15 @@
 
 using namespace std;
 
-CScript CVote::ToScript(int nVersion) const
+CScript CVote::ToScript(int nProtocolVersion) const
 {
     CScript voteScript;
 
     voteScript << OP_RETURN;
     voteScript << OP_1;
 
-    CDataStream voteStream(SER_NETWORK, PROTOCOL_VERSION);
-    if (nVersion == this->nVersion)
-        voteStream << *this;
-    else
-        voteStream << CVote(*this, nVersion);
+    CDataStream voteStream(SER_NETWORK, nProtocolVersion);
+    voteStream << *this;
 
     vector<unsigned char> vchVote(voteStream.begin(), voteStream.end());
     voteScript << vchVote;
@@ -34,7 +31,7 @@ bool IsVote(const CScript& scriptPubKey)
     return (scriptPubKey.size() > 2 && scriptPubKey[0] == OP_RETURN && scriptPubKey[1] == OP_1);
 }
 
-bool ExtractVote(const CScript& scriptPubKey, CVote& voteRet)
+bool ExtractVote(const CScript& scriptPubKey, CVote& voteRet, int nProtocolVersion)
 {
     voteRet.SetNull();
 
@@ -53,7 +50,7 @@ bool ExtractVote(const CScript& scriptPubKey, CVote& voteRet)
     if (stack.size() != 1)
         return false;
 
-    CDataStream voteStream(stack[0], SER_NETWORK, PROTOCOL_VERSION);
+    CDataStream voteStream(stack[0], SER_NETWORK, nProtocolVersion);
 
     CVote vote;
     try {
@@ -67,7 +64,7 @@ bool ExtractVote(const CScript& scriptPubKey, CVote& voteRet)
     return true;
 }
 
-bool ExtractVote(const CBlock& block, CVote& voteRet)
+bool ExtractVote(const CBlock& block, CVote& voteRet, int nProtocolVersion)
 {
     voteRet.SetNull();
 
@@ -83,7 +80,7 @@ bool ExtractVote(const CBlock& block, CVote& voteRet)
 
     BOOST_FOREACH (const CTxOut& txo, tx.vout)
     {
-        if (ExtractVote(txo.scriptPubKey, voteRet))
+        if (ExtractVote(txo.scriptPubKey, voteRet, nProtocolVersion))
             return true;
     }
 
@@ -210,9 +207,6 @@ bool CalculateParkRateResults(const std::vector<CVote>& vVote, const std::map<un
 
     BOOST_FOREACH(const CVote& vote, vVote)
     {
-        if (!vote.IsValid())
-            return false;
-
         if (vote.nCoinAgeDestroyed == 0)
             return error("vote with 0 coin age destroyed");
 
@@ -360,7 +354,7 @@ bool CParkRate::IsValid() const
     return true;
 }
 
-bool CCustodianVote::IsValid() const
+bool CCustodianVote::IsValid(int nProtocolVersion) const
 {
     if (cUnit == 'S')
         return false;
@@ -371,7 +365,7 @@ bool CCustodianVote::IsValid() const
     return true;
 }
 
-bool CVote::IsValid() const
+bool CVote::IsValid(int nProtocolVersion) const
 {
     set<unsigned char> seenParkVoteUnits;
     BOOST_FOREACH(const CParkRateVote& parkRateVote, vParkRateVote)
@@ -386,7 +380,7 @@ bool CVote::IsValid() const
     set<CCustodianVote> seenCustodianVotes;
     BOOST_FOREACH(const CCustodianVote& custodianVote, vCustodianVote)
     {
-        if (!custodianVote.IsValid())
+        if (!custodianVote.IsValid(nProtocolVersion))
             return false;
 
         if (seenCustodianVotes.count(custodianVote))
@@ -396,19 +390,14 @@ bool CVote::IsValid() const
     return true;
 }
 
-void CVote::Upgrade()
-{
-    if (nVersion < 50000)
-        nVersion = 50000;
-}
-
 bool ExtractVotes(const CBlock& block, const CBlockIndex *pindexprev, unsigned int nCount, std::vector<CVote> &vVoteRet)
 {
     CVote vote;
-    if (!ExtractVote(block, vote))
+    int nProtocolVersion = GetProtocolForNextBlock(pindexprev);
+    if (!ExtractVote(block, vote, nProtocolVersion))
         return error("ExtractVotes(): ExtractVote failed");
 
-    if (!vote.IsValid())
+    if (!vote.IsValid(nProtocolVersion))
         return error("ExtractVotes(): Invalid vote");
 
     if (!block.GetCoinAge(vote.nCoinAgeDestroyed))
@@ -450,9 +439,6 @@ bool GenerateCurrencyCoinBases(const std::vector<CVote> vVote, const std::map<CB
 
     BOOST_FOREACH(const CVote& vote, vVote)
     {
-        if (!vote.IsValid())
-            return false;
-
         if (vote.nCoinAgeDestroyed == 0)
             return error("vote with 0 coin age destroyed");
 
@@ -568,4 +554,65 @@ int64 GetPremium(int64 nValue, int64 nDuration, unsigned char cUnit, const std::
         }
     }
     return 0;
+}
+
+/*
+ * Check if the V2.0 protocol is active on the next block
+ */
+bool IsNuProtocolV20NextBlock(const CBlockIndex* pPrevIndex)
+{
+    return IsProtocolActiveForNextBlock(pPrevIndex,
+            fTestNet ? PROTOCOL_V2_0_TEST_VOTE_TIME : PROTOCOL_V2_0_VOTE_TIME, PROTOCOL_V2_0);
+}
+
+/*
+ * Calculate what should be the protocol version for the next block.
+ * The minimum version that it will return is v0.5 (50000) so checks
+ * for older versions should be done separately.
+ */
+int GetProtocolForNextBlock(const CBlockIndex* pPrevIndex)
+{
+    int nProtocol = 0;
+
+    if (pPrevIndex != NULL)
+        nProtocol = pPrevIndex->nProtocolVersion;
+
+    if (nProtocol < PROTOCOL_V2_0 && IsNuProtocolV20NextBlock(pPrevIndex))
+        nProtocol = PROTOCOL_V2_0;
+
+    if (nProtocol < PROTOCOL_V0_5)
+        nProtocol = PROTOCOL_V0_5;
+
+    return nProtocol;
+}
+
+/*
+ * Check if votes pass for the specified protocol version.
+ * The new protocol applies to the block AFTER the pPrevIndex.
+ */
+bool IsProtocolActiveForNextBlock(const CBlockIndex* pPrevIndex,
+                           int nSwitchTime, int nProtocolVersion,
+                           int nRequired, int nToCheck)
+{
+    if (pPrevIndex == NULL)
+        return false;
+    // if protocol switch time arrived and no majority achieved yet
+    if (pPrevIndex->nTime >= nSwitchTime && pPrevIndex->nProtocolVersion < nProtocolVersion)
+    {
+        int nVotes = 0;
+        for (int i = 0; i < nToCheck && nVotes < nRequired && pPrevIndex != NULL; i++)
+        {
+            // count also votes with higher version number than the target protocol
+            if (pPrevIndex->vote.nVersionVote >= nProtocolVersion)
+                nVotes++;
+            pPrevIndex = pPrevIndex->pprev;
+        }
+
+        // votes passed the required threshold?
+        return nVotes >= nRequired;
+    }
+    else if (pPrevIndex->nProtocolVersion >= nProtocolVersion) // if vote already passed
+        return true;
+    else
+        return false;
 }

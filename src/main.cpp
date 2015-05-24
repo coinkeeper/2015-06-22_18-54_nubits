@@ -23,12 +23,10 @@
 using namespace std;
 using namespace boost;
 
-unsigned int nNuProtocolV05SwitchTime     = 1415368800; // 2014-11-07 14:00:00 UTC
-unsigned int nNuProtocolV05TestSwitchTime = 1414195200; // 2014-10-25 00:00:00 UTC
 
 bool IsNuProtocolV05(int64 nTimeBlock)
 {
-    return (nTimeBlock >= (fTestNet? nNuProtocolV05TestSwitchTime : nNuProtocolV05SwitchTime));
+    return (nTimeBlock >= (fTestNet? PROTOCOL_V5_TEST_SWITCH_TIME : PROTOCOL_V5_SWITCH_TIME));
 }
 
 CCriticalSection cs_setpwalletRegistered;
@@ -2111,6 +2109,13 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
         pindexNew->nHeight = pindexNew->pprev->nHeight + 1;
     }
 
+    // nubit: calculate the effective protocol version
+    pindexNew->nProtocolVersion = GetProtocolForNextBlock(pindexNew->pprev);
+    if (fDebug && pindexNew->pprev != NULL && pindexNew->nProtocolVersion > pindexNew->pprev->nProtocolVersion)
+        printf("Protocol version update %d -> %d on height=%d\n",
+                pindexNew->pprev->nProtocolVersion, pindexNew->nProtocolVersion, pindexNew->nHeight);
+
+
     // ppcoin: compute chain trust score
     pindexNew->bnChainTrust = (pindexNew->pprev ? pindexNew->pprev->bnChainTrust : 0) + pindexNew->GetBlockTrust();
 
@@ -2139,9 +2144,9 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
     // nubit: save vote data
     if (pindexNew->IsProofOfStake())
     {
-        if (!ExtractVote(*this, pindexNew->vote))
+        if (!ExtractVote(*this, pindexNew->vote, pindexNew->nProtocolVersion))
             return error("AddToBlockIndex() : Unable to extract vote");
-        if (!pindexNew->vote.IsValid())
+        if (!pindexNew->vote.IsValid(pindexNew->nProtocolVersion))
             return error("AddToBlockIndex() : Invalid vote");
 
         if (!GetCoinStakeAge(pindexNew->nCoinAgeDestroyed))
@@ -2306,16 +2311,6 @@ bool CBlock::CheckBlock() const
     if (hashMerkleRoot != BuildMerkleTree())
         return DoS(100, error("CheckBlock() : hashMerkleRoot mismatch"));
 
-    // nubit: Basic vote check
-    if (IsProofOfStake())
-    {
-        CVote vote;
-        if (!ExtractVote(*this, vote))
-            return error("CheckBlock() : Unable to extract vote");
-        if (!vote.IsValid())
-            return error("CheckBlock() : Invalid vote");
-    }
-
     // ppcoin: check block signature
     if (!CheckBlockSignature())
         return DoS(100, error("CheckBlock() : bad block signature"));
@@ -2336,6 +2331,7 @@ bool CBlock::AcceptBlock()
         return DoS(10, error("AcceptBlock() : prev block not found"));
     CBlockIndex* pindexPrev = (*mi).second;
     int nHeight = pindexPrev->nHeight+1;
+    int nProtocolVersion = GetProtocolForNextBlock(pindexPrev);
 
     // Peershares: check switch from proof of work to proof of stake
     if (nHeight <= PROOF_OF_WORK_BLOCKS)
@@ -2369,6 +2365,17 @@ bool CBlock::AcceptBlock()
     // ppcoin: check that the block satisfies synchronized checkpoint
     if (!Checkpoints::CheckSync(hash, pindexPrev))
         return error("AcceptBlock() : rejected by synchronized checkpoint");
+
+    // nubit: reject pre v2.0 protocol votes
+    if (IsProofOfStake())
+    {
+        CVote vote;
+        if (!ExtractVote(*this, vote, nProtocolVersion))
+            return error("AcceptBlock() : unable to extract block vote");
+        if (nProtocolVersion >= PROTOCOL_V2_0 && vote.nVersionVote < PROTOCOL_V2_0)
+            return error("AcceptBlock(): Protocol version vote (%d) lower than the protocol v2.0 (%d)",
+                    vote.nVersionVote, PROTOCOL_V2_0);
+    }
 
     // nubit: check the expansion transactions match the expected ones
     {
@@ -4310,21 +4317,22 @@ CBlock* CreateNewBlock(CReserveKey& reservekey, CWallet* pwallet, bool fProofOfS
     std::vector<CParkRateVote> vParkRateResult;
     if (pblock->IsProofOfStake())
     {
+        int nProtocolVersion = GetProtocolForNextBlock(pindexPrev);
         CVote vote;
-        if (!ExtractVote(*pblock, vote))
+        if (!ExtractVote(*pblock, vote, nProtocolVersion))
         {
-            printf("CreateNewBlock(): unable to extract vote");
+            printf("CreateNewBlock(): unable to extract vote\n");
             return NULL;
         }
         if (!pblock->GetCoinStakeAge(vote.nCoinAgeDestroyed))
         {
-            printf("CreateNewBlock(): unable to get vote coin age");
+            printf("CreateNewBlock(): unable to get vote coin age\n");
             return NULL;
         }
 
         if (!CalculateParkRateResults(vote, pindexPrev, vParkRateResult))
         {
-            printf("CreateNewBlock(): unable to calculate park rate results");
+            printf("CreateNewBlock(): unable to calculate park rate results\n");
             return NULL;
         }
     }

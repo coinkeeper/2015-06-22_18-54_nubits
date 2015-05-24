@@ -604,6 +604,7 @@ bool CTxDB::LoadBlockIndex()
             pindexNew->vParkRateResult        = diskindex.vParkRateResult;
             pindexNew->nCoinAgeDestroyed      = diskindex.nCoinAgeDestroyed;
             pindexNew->vElectedCustodian      = diskindex.vElectedCustodian;
+            pindexNew->nProtocolVersion     = diskindex.nProtocolVersion;
             pindexNew->nVersion       = diskindex.nVersion;
             pindexNew->hashMerkleRoot = diskindex.hashMerkleRoot;
             pindexNew->nTime          = diskindex.nTime;

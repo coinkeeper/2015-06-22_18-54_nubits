@@ -156,7 +156,7 @@ void CWallet::SetBestChain(const CBlockLocator& loc)
 
 void CWallet::SetVote(const CVote& vote)
 {
-    if (!vote.IsValid())
+    if (!vote.IsValid(pindexBest->nProtocolVersion))
         throw runtime_error("Cannot set invalid vote");
 
     if (this->vote != vote)
@@ -1677,16 +1677,13 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
 
     nCredit += GetProofOfStakeReward();
 
+    int nProtocolVersion = GetProtocolForNextBlock(pindexprev);
+
     // nubit: Add current vote
-    if (!vote.IsValid())
+    if (!vote.IsValid(nProtocolVersion))
         return error("CreateCoinStake : current vote is invalid");
 
-    int nVersion;
-    if (IsNuProtocolV05(txNew.nTime))
-        nVersion = PROTOCOL_VERSION;
-    else
-        nVersion = 40500;
-    txNew.vout.push_back(CTxOut(0, vote.ToScript(nVersion)));
+    txNew.vout.push_back(CTxOut(0, vote.ToScript(nProtocolVersion)));
 
     // nubit: The result of the vote is stored in the CoinStake transaction
     CParkRateVote parkRateResult;
