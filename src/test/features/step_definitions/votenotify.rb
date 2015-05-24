@@ -30,6 +30,7 @@ Given(/^the votenotify script of node "(.*?)" is written to dump the vote and si
 
     $NUD $ARGS getvote >$VOTE_PATH
     $NUD $ARGS signmessage $ADDRESS <$VOTE_PATH >$SIGNATURE_PATH
+    chmod 666 $VOTE_PATH $SIGNATURE_PATH
   EOF
   script_path = node.shared_path("votenotify.sh")
   File.open(script_path, "w") { |f| f.write(script) }
