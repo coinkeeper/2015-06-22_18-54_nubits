@@ -772,7 +772,8 @@ Value getinfo(const Array& params, bool fHelp)
         obj.push_back(Pair("unlocked_until", (boost::int64_t)nWalletUnlockTime / 1000));
     obj.push_back(Pair("errors",        GetWarnings("statusbar")));
 #ifdef TESTING
-    obj.push_back(Pair("time",          DateTimeStrFormat(GetAdjustedTime())));
+    obj.push_back(Pair("time",          DateTimeStrFormat(GetTime())));
+    obj.push_back(Pair("timestamp",     (boost::int64_t)GetTime()));
 #endif
     return obj;
 }
