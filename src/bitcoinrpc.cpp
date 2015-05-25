@@ -1478,7 +1478,7 @@ Value getpremium(const Array& params, bool fHelp)
     if (!ParkDurationRange(nDuration))
         throw JSONRPCError(-5, "Invalid duration");
 
-    int64 nPremium = pindexBest->GetPremium(nAmount, nDuration, pwalletMain->GetUnit());
+    int64 nPremium = pindexBest->GetNextPremium(nAmount, nDuration, pwalletMain->GetUnit());
 
     return FormatMoney(nPremium);
 }

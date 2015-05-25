@@ -4876,3 +4876,20 @@ void GenerateBitcoins(bool fGenerate, CWallet* pwallet)
         }
     }
 }
+
+int64 CBlockIndex::GetPremium(int64 nValue, int64 nDuration, unsigned char cUnit, int nOffset) const
+{
+    if (nProtocolVersion >= PROTOCOL_V2_0)
+    {
+        const CBlockIndex* peffectiveIndex = this;
+        for (int i = 0; i < PARK_RATE_VOTE_DELAY - nOffset; i++)
+        {
+            peffectiveIndex = peffectiveIndex->pprev;
+            if (!peffectiveIndex)
+                return 0;
+        }
+        return ::GetPremium(nValue, nDuration, cUnit, peffectiveIndex->vParkRateResult);
+    }
+    else
+        return ::GetPremium(nValue, nDuration, cUnit, vParkRateResult);
+}

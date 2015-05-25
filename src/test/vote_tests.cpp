@@ -555,6 +555,56 @@ BOOST_AUTO_TEST_CASE(premium_calculation)
     BOOST_CHECK_EQUAL((int64)(49.69482421875 * COIN), GetPremium(1 * COIN, (1<<15) + 1000, 'B', vParkRateResult));
 }
 
+BOOST_AUTO_TEST_CASE(effective_park_rates_delayed_after_protocol_v2_0)
+{
+    CBlockIndex *pindexBase;
+
+    int64 nValue = 1000 * COIN;
+    unsigned char cUnit = 'B';
+    int nCompactDuration = 5;
+    int nDuration = (1 << nCompactDuration);
+
+    // Create 100 previous blocks
+    CBlockIndex *pindex = NULL;
+    for (int i = 0; i < 100; i++)
+    {
+        if (i == 0)
+        {
+            pindex = new CBlockIndex;
+            pindexBase = pindex;
+        }
+        else
+        {
+            pindex->pprev = new CBlockIndex;
+            pindex->pprev->pnext = pindex;
+            pindex = pindex->pprev;
+        }
+
+        vector<CParkRateVote> vParkRateResult;
+        CParkRateVote parkRateResult;
+        parkRateResult.cUnit = cUnit;
+        parkRateResult.vParkRate.push_back(CParkRate(nCompactDuration, (i+1) * COIN_PARK_RATE / COIN));
+        vParkRateResult.push_back(parkRateResult);
+        pindex->vParkRateResult = vParkRateResult;
+    }
+
+    pindexBase->nProtocolVersion = PROTOCOL_V0_5;
+    int64 expectedPremium = GetPremium(nValue, nDuration, cUnit, pindexBase->vParkRateResult);
+    BOOST_CHECK_EQUAL(expectedPremium, pindexBase->GetPremium(nValue, nDuration, cUnit));
+    BOOST_CHECK_EQUAL(expectedPremium, pindexBase->GetNextPremium(nValue, nDuration, cUnit));
+
+    pindexBase->nProtocolVersion = PROTOCOL_V2_0;
+    CBlockIndex* pindexEffective = pindexBase;
+    for (int i = 0; i < 60; i++)
+        pindexEffective = pindexEffective->pprev;
+    expectedPremium = GetPremium(nValue, nDuration, cUnit, pindexEffective->vParkRateResult);
+    BOOST_CHECK_EQUAL(expectedPremium, pindexBase->GetPremium(nValue, nDuration, cUnit));
+
+    pindexEffective = pindexEffective->pnext;
+    expectedPremium = GetPremium(nValue, nDuration, cUnit, pindexEffective->vParkRateResult);
+    BOOST_CHECK_EQUAL(expectedPremium, pindexBase->GetNextPremium(nValue, nDuration, cUnit));
+}
+
 BOOST_AUTO_TEST_CASE(vote_v1_unserialization)
 {
     // Serialized with vote v1 code:

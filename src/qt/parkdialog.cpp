@@ -203,7 +203,7 @@ void ParkDialog::on_end_dateTimeChanged(const QDateTime& datetime)
 
 qint64 ParkDialog::getEstimatedPremium() const
 {
-    return model->getPremium(getAmount(), getBlocks());
+    return model->getNextPremium(getAmount(), getBlocks());
 }
 
 void ParkDialog::updatePremium()
