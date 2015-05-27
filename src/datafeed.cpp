@@ -214,7 +214,7 @@ CVote ParseVote(const Object& objVote)
                             throw runtime_error("Invalid address");
 
                         custodianVote.SetAddress(address);
-                        if (custodianVote.cUnit == 'S' || !ValidUnit(custodianVote.cUnit))
+                        if (!IsValidCurrency(custodianVote.cUnit))
                             throw runtime_error("Invalid custodian unit");
                     }
                     else if (custodianVoteAttribute.name_ == "amount")
@@ -235,7 +235,7 @@ CVote ParseVote(const Object& objVote)
                     if (parkRateVoteAttribute.name_ == "unit")
                     {
                         parkRateVote.cUnit = parkRateVoteAttribute.value_.get_str().c_str()[0];
-                        if (parkRateVote.cUnit == 'S' || !ValidUnit(parkRateVote.cUnit))
+                        if (!IsValidCurrency(parkRateVote.cUnit))
                             throw runtime_error("Invalid park rate unit");
                     }
                     else if (parkRateVoteAttribute.name_ == "rates")

@@ -772,7 +772,8 @@ Value getinfo(const Array& params, bool fHelp)
         obj.push_back(Pair("unlocked_until", (boost::int64_t)nWalletUnlockTime / 1000));
     obj.push_back(Pair("errors",        GetWarnings("statusbar")));
 #ifdef TESTING
-    obj.push_back(Pair("time",          DateTimeStrFormat(GetAdjustedTime())));
+    obj.push_back(Pair("time",          DateTimeStrFormat(GetTime())));
+    obj.push_back(Pair("timestamp",     (boost::int64_t)GetTime()));
 #endif
     return obj;
 }
@@ -805,7 +806,7 @@ Value getparkrates(const Array& params, bool fHelp)
     else
         cUnit = pwalletMain->Unit();
 
-    if (!ValidUnit(cUnit))
+    if (!IsValidUnit(cUnit))
         throw JSONRPCError(-12, "Error: Invalid currency");
 
     if (cUnit == 'S')
@@ -3138,6 +3139,8 @@ Value setvote(const Array& params, bool fHelp)
 
     Object objVote = params[0].get_obj();
     CVote vote = ParseVote(objVote);
+    if (!vote.IsValid(pindexBest->nProtocolVersion))
+        throw runtime_error("The vote is invalid\n");
 
     pwalletMain->SetVote(vote);
 
@@ -3493,7 +3496,7 @@ Value liquidityinfo(const Array& params, bool fHelp)
 
     unsigned char cUnit = params[0].get_str()[0];
 
-    if (!ValidUnit(cUnit) || cUnit == 'S')
+    if (!IsValidCurrency(cUnit))
         throw JSONRPCError(-3, "Invalid currency");
 
     CBitcoinAddress address(params[3].get_str());
@@ -3503,7 +3506,7 @@ Value liquidityinfo(const Array& params, bool fHelp)
 
     unsigned char cCustodianUnit = address.GetUnit();
 
-    if (!ValidUnit(cCustodianUnit) || cCustodianUnit == 'S')
+    if (!IsValidCurrency(cCustodianUnit))
         throw JSONRPCError(-3, "Invalid custodian unit");
 
     CWallet* wallet = GetWallet(cCustodianUnit);
@@ -3584,7 +3587,7 @@ Value getliquidityinfo(const Array& params, bool fHelp)
 
     unsigned char cUnit = params[0].get_str()[0];
 
-    if (!ValidUnit(cUnit) || cUnit == 'S')
+    if (!IsValidCurrency(cUnit))
         throw JSONRPCError(-3, "Invalid currency");
 
     Object result;
@@ -4246,6 +4249,7 @@ Value getdatafeed(const Array& params, bool fHelp)
     result.push_back(Pair("url", dataFeed.sURL));
     result.push_back(Pair("signatureurl", dataFeed.sSignatureURL));
     result.push_back(Pair("signatureaddress", dataFeed.sSignatureAddress));
+    result.push_back(Pair("parts", boost::algorithm::join(dataFeed.vParts, ",")));
 
     return result;
 }
@@ -4266,7 +4270,7 @@ Value burn(const Array& params, bool fHelp)
     if (params[1].get_str().size() != 1)
         throw JSONRPCError(-101, "Invalid unit length");
     unsigned char cUnit = params[1].get_str()[0];
-    if (!ValidUnit(cUnit))
+    if (!IsValidUnit(cUnit))
         throw JSONRPCError(-101, "Invalid unit");
 
     CWallet* pwallet = GetWallet(cUnit);

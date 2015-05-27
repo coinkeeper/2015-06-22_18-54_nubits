@@ -1,3 +1,5 @@
+PROTOCOL_V2_0 = 2000000
+
 Before do
   @blocks = {}
   @addresses = {}
@@ -534,8 +536,8 @@ When(/^the nodes travel to the Nu protocol v(\d+) switch time$/) do |arg1|
   if arg1.to_i == 5
     switch_time = Time.at(1414195200)
   elsif arg1.to_i == 20
-    # TODO redefine v2.0 switch time
-    switch_time = Time.at(1431648000)
+    switch_time = File.read(File.expand_path("../../../../version.h", __FILE__)).scan(/PROTOCOL_V2_0_TEST_VOTE_TIME = (\d+);/).first.first
+    switch_time = Time.at(switch_time.to_i)
   else
     raise
   end
@@ -689,4 +691,27 @@ When(/^node "(.*?)" imports the private key "(.*?)" into the (\S+) wallet$/) do 
   private_key = arg2
   unit_name = arg3
   node.unit_rpc(unit(unit_name), "importprivkey", private_key)
+end
+
+Given(/^the network is at protocol (.*?)$/) do |arg1|
+  node_name = @nodes.keys.first
+  node = @nodes[node_name]
+  case arg1
+  when "0.5"
+    if node.info["timestamp"] < 1414195200
+      step %Q(the nodes travel to the Nu protocol v05 switch time)
+      step %Q(node "#{node_name}" finds 1 blocks received by all nodes)
+    end
+  when "2.0"
+    if node.info["protocolversion"] < PROTOCOL_V2_0
+      step %Q(the network is at protocol 0.5)
+      step %Q(node "#{node_name}" finds 9 blocks received by all nodes)
+      step %Q(node "#{node_name}" should use protocol 50000)
+      step %Q(the nodes travel to the Nu protocol v20 switch time)
+      step %Q(node "#{node_name}" finds 2 blocks received by all nodes)
+      step %Q(node "#{node_name}" should use protocol #{PROTOCOL_V2_0})
+    end
+  else
+    raise "unknown protocol: #{arg1.inspect}"
+  end
 end
