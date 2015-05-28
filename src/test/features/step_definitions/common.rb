@@ -23,6 +23,11 @@ def time_travel(seconds)
   end
 end
 
+def time_travel_to(time)
+  seconds = (time - @time).to_i
+  time_travel(seconds)
+end
+
 Given(/^a network with nodes? (.+)(?: able to mint)?$/) do |node_names|
   node_names = node_names.scan(/"(.*?)"/).map(&:first)
   available_nodes = %w( a b c d e )
