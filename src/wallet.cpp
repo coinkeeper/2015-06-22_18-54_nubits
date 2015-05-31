@@ -552,20 +552,23 @@ bool CWallet::IsChange(const CTxOut& txout, const CTransaction& tx) const
             return true;
 
         // nubit: if the output address is the same as any input address, it is change (happens when avatar mode is enabled)
-        BOOST_FOREACH(const CTxIn& txin, tx.vin)
+        if (GetBoolArg("-avatar", (cUnit == 'S')))
         {
-            map<uint256, CWalletTx>::const_iterator mi = mapWallet.find(txin.prevout.hash);
-            if (mi != mapWallet.end())
+            BOOST_FOREACH(const CTxIn& txin, tx.vin)
             {
-                const CWalletTx& prev = (*mi).second;
-                if (txin.prevout.n < prev.vout.size())
+                map<uint256, CWalletTx>::const_iterator mi = mapWallet.find(txin.prevout.hash);
+                if (mi != mapWallet.end())
                 {
-                    const CTxOut& prevout = prev.vout[txin.prevout.n];
-                    CTxDestination inAddress;
-                    if (ExtractDestination(prevout.scriptPubKey, inAddress))
+                    const CWalletTx& prev = (*mi).second;
+                    if (txin.prevout.n < prev.vout.size())
                     {
-                        if (inAddress == address)
-                            return true;
+                        const CTxOut& prevout = prev.vout[txin.prevout.n];
+                        CTxDestination inAddress;
+                        if (ExtractDestination(prevout.scriptPubKey, inAddress))
+                        {
+                            if (inAddress == address)
+                                return true;
+                        }
                     }
                 }
             }
