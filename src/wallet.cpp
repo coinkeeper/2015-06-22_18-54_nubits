@@ -1702,7 +1702,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
     }
 
     vector<CParkRateVote> vParkRateResult;
-    if (!CalculateParkRateResults(vote, pindexprev, vParkRateResult))
+    if (!CalculateParkRateResults(vote, pindexprev, nProtocolVersion, vParkRateResult))
         return error("CalculateParkRateResults failed");
 
     BOOST_FOREACH(const CParkRateVote& parkRateResult, vParkRateResult)

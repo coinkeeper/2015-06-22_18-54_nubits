@@ -2178,7 +2178,7 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
 
         {
             std::vector<CParkRateVote> vExpectedParkRateResult;
-            if (!CalculateParkRateResults(pindexNew->vote, pindexNew->pprev, vExpectedParkRateResult))
+            if (!CalculateParkRateResults(pindexNew->vote, pindexNew->pprev, pindexNew->nProtocolVersion, vExpectedParkRateResult))
                 return error("AddToBlockIndex() : Unable to calculate park rate results");
             if (pindexNew->vParkRateResult != vExpectedParkRateResult)
                 return error("AddToBlockIndex() : Park rate results do not match");
@@ -4350,7 +4350,7 @@ CBlock* CreateNewBlock(CReserveKey& reservekey, CWallet* pwallet, bool fProofOfS
             return NULL;
         }
 
-        if (!CalculateParkRateResults(vote, pindexPrev, vParkRateResult))
+        if (!CalculateParkRateResults(vote, pindexPrev, GetProtocolForNextBlock(pindexPrev), vParkRateResult))
         {
             printf("CreateNewBlock(): unable to calculate park rate results\n");
             return NULL;

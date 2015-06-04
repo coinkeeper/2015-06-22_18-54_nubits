@@ -401,7 +401,7 @@ bool LimitParkRateChangeV2_0(std::vector<CParkRateVote>& results, const std::map
     return true;
 }
 
-bool CalculateParkRateResults(const CVote &vote, const CBlockIndex *pindexprev, std::vector<CParkRateVote>& vParkRateResult)
+bool CalculateParkRateResults(const CVote &vote, const CBlockIndex* pindexprev, int nProtocolVersion, std::vector<CParkRateVote>& vParkRateResult)
 {
     vector<CVote> vVote;
     vVote.reserve(PARK_RATE_VOTES);
@@ -418,7 +418,7 @@ bool CalculateParkRateResults(const CVote &vote, const CBlockIndex *pindexprev, 
     if (!CalculateParkRateVote(vVote, vParkRateResult))
         return false;
 
-    if (pindexprev->nProtocolVersion >= PROTOCOL_V2_0)
+    if (nProtocolVersion >= PROTOCOL_V2_0)
     {
         map<unsigned char, const CParkRateVote*> mapPreviousRate;
         BOOST_FOREACH(const CParkRateVote& previousRate, pindexprev->vParkRateResult)
