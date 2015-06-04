@@ -62,7 +62,7 @@ bool CLiquidityInfo::ProcessLiquidityInfo()
     {
         LOCK2(cs_main, cs_mapElectedCustodian);
 
-        if (nVersion >= PROTOCOL_V2_0 && pindexBest->nProtocolVersion < PROTOCOL_V2_0)
+        if (pindexBest->nProtocolVersion >= PROTOCOL_V2_0 && nVersion > pindexBest->nProtocolVersion)
             return false;
 
         map<const CBitcoinAddress, CBlockIndex*>::iterator it;
