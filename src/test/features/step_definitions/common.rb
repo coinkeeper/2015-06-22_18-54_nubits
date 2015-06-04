@@ -724,3 +724,9 @@ Given(/^the network is at protocol (.*?)$/) do |arg1|
     raise "unknown protocol: #{arg1.inspect}"
   end
 end
+
+When(/^node "(.*?)" resets (?:his|her) vote$/) do |arg1|
+  node = @nodes[arg1]
+  vote = {}
+  node.rpc("setvote", vote)
+end

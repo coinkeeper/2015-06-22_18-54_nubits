@@ -1964,7 +1964,7 @@ std::string CWallet::Park(int64 nValue, int64 nDuration, const CBitcoinAddress& 
     if (nValue + GetSafeMinTxFee(pindexBest) > GetBalance())
         return _("Insufficient funds");
 
-    int64 nPremium = pindexBest->GetPremium(nValue, nDuration, cUnit);
+    int64 nPremium = pindexBest->GetNextPremium(nValue, nDuration, cUnit);
 
     if (nPremium == 0)
         return _("No premium for this duration");

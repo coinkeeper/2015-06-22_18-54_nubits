@@ -260,14 +260,14 @@ QString WalletModel::park(qint64 amount, qint64 blocks, QString unparkAddress)
     }
 }
 
-qint64 WalletModel::getPremium(qint64 amount, qint64 blocks)
+qint64 WalletModel::getNextPremium(qint64 amount, qint64 blocks)
 {
     {
         LOCK2(cs_main, wallet->cs_wallet);
         if (!pindexBest)
             return 0;
 
-        return pindexBest->GetPremium(amount, blocks, wallet->Unit());
+        return pindexBest->GetNextPremium(amount, blocks, wallet->Unit());
     }
 }
 

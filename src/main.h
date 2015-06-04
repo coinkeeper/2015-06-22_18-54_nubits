@@ -57,10 +57,12 @@ static const int64 PROOF_OF_WORK_BLOCKS = 400; // Block height of the last proof
 static const int64 PARK_RATE_VOTES = 5; // Number of blocks used in park rate median vote calculation
 static const int64 PARK_RATE_PREVIOUS_VOTES = 1; // Number of blocks used in the park rate increase limitation
 static const unsigned int CUSTODIAN_VOTES = 5;
+static const int PARK_RATE_VOTE_DELAY = 12;
 #else
 static const int64 PARK_RATE_VOTES = 2000; // Number of blocks used in park rate median vote calculation
 static const int64 PARK_RATE_PREVIOUS_VOTES = 1440; // Number of blocks used in the park rate increase limitation
 static const unsigned int CUSTODIAN_VOTES = 10000;
+static const int PARK_RATE_VOTE_DELAY = 60;
 #endif
 static const int64 MOTION_VOTES = 10000;
 static const int64 PROOF_OF_STAKE_REWARD = 40 * COIN; // Constant reward of Proof of Stake blocks
@@ -1500,9 +1502,10 @@ public:
             nFlags |= BLOCK_STAKE_MODIFIER;
     }
 
-    int64 GetPremium(int64 nValue, int64 nDuration, unsigned char cUnit)
+    int64 GetPremium(int64 nValue, int64 nDuration, unsigned char cUnit, int nOffset = 0) const;
+    int64 GetNextPremium(int64 nValue, int64 nDuration, unsigned char cUnit) const
     {
-        return ::GetPremium(nValue, nDuration, cUnit, vParkRateResult);
+        return GetPremium(nValue, nDuration, cUnit, 1);
     }
 
     int64 GetMoneySupply(unsigned char cUnit) const
