@@ -232,6 +232,7 @@ public:
     std::vector<CCustodianVote> vCustodianVote;
     std::vector<CParkRateVote> vParkRateVote;
     std::vector<uint160> vMotion;
+    std::map<unsigned char, uint32_t> mapFeeVote;
 
     int64 nCoinAgeDestroyed;
 
@@ -247,6 +248,7 @@ public:
         vCustodianVote.clear();
         vParkRateVote.clear();
         vMotion.clear();
+        mapFeeVote.clear();
         nCoinAgeDestroyed = 0;
     }
 
@@ -304,6 +306,10 @@ public:
             READWRITE(vMotion);
         else
             ReadWriteSingleMotion(s, nType, nVersion, ser_action);
+        if (nVersion >= PROTOCOL_V2_0)
+            READWRITE(mapFeeVote);
+        else if (fRead)
+            const_cast<CVote*>(this)->mapFeeVote.clear();
     )
 
     CScript ToScript(int nProtocolVersion) const;
@@ -320,7 +326,8 @@ public:
         return (nVersionVote == other.nVersionVote &&
                 vCustodianVote == other.vCustodianVote &&
                 vParkRateVote == other.vParkRateVote &&
-                vMotion == other.vMotion);
+                vMotion == other.vMotion &&
+                mapFeeVote == other.mapFeeVote);
     }
     inline bool operator!=(const CVote& other) const
     {
@@ -347,5 +354,7 @@ bool GenerateCurrencyCoinBases(const std::vector<CVote> vVote, const std::map<CB
 
 int GetProtocolForNextBlock(const CBlockIndex* pPrevIndex);
 bool IsProtocolActiveForNextBlock(const CBlockIndex* pPrevIndex, int nSwitchTime, int nProtocolVersion, int nRequired=PROTOCOL_SWITCH_REQUIRE_VOTES, int nToCheck=PROTOCOL_SWITCH_COUNT_VOTES);
+
+bool CalculateVotedFees(CBlockIndex* pindex);
 
 #endif

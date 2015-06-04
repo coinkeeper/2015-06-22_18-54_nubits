@@ -674,13 +674,30 @@ bool CTransaction::CheckTransaction() const
     return true;
 }
 
-int64 CTransaction::GetMinFee(unsigned int nBytes) const
+int64 CTransaction::GetUnitMinFee(const CBlockIndex *pindex) const
 {
-    const int64 nBaseFee = GetUnitMinFee();
+    return pindex->GetMinFee(cUnit);
+}
 
-    if (nBytes == 0)
-        nBytes = ::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION);
+int64 CTransaction::GetSafeUnitMinFee(const CBlockIndex *pindex) const
+{
+    return pindex->GetSafeMinFee(cUnit);
+}
 
+int64 CTransaction::GetMinFee(const CBlockIndex *pindex, unsigned int nBytes) const
+{
+    int64 nBaseFee = GetUnitMinFee(pindex);
+    return GetMinFee(nBaseFee, nBytes);
+}
+
+int64 CTransaction::GetSafeMinFee(const CBlockIndex *pindex, unsigned int nBytes) const
+{
+    int64 nBaseFee = GetSafeUnitMinFee(pindex);
+    return GetMinFee(nBaseFee, nBytes);
+}
+
+int64 CTransaction::GetMinFee(int64 nBaseFee, unsigned int nBytes) const
+{
     int64 nMinFee = (1 + (int64)nBytes / 1000) * nBaseFee;
 
     if (!MoneyRange(nMinFee))
@@ -802,7 +819,7 @@ bool CTxMemPool::accept(CTxDB& txdb, CTransaction &tx, bool fCheckInputs,
         unsigned int nSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
 
         // Don't accept it if it can't get into a block
-        const int64 txMinFee = tx.GetMinFee(nSize);
+        const int64 txMinFee = tx.GetMinFee(pindexBest, nSize);
         if (nFees < txMinFee)
         {
             // nubit: unpark transactions do not have fees. The validity of the unpark is checked during ConnectInputs
@@ -1521,7 +1538,7 @@ bool CTransaction::ConnectInputs(CTxDB& txdb, MapPrevTx inputs,
         {
             // ppcoin: coin stake tx earns reward instead of paying fee
             int64 nStakeReward = GetValueOut() - nValueIn;
-            if (nStakeReward > GetProofOfStakeReward() - GetMinFee() + GetUnitMinFee())
+            if (nStakeReward > GetProofOfStakeReward() - GetMinFee(pindexBlock) + GetUnitMinFee(pindexBlock))
                 return DoS(100, error("ConnectInputs() : %s stake reward exceeded", GetHash().ToString().substr(0,10).c_str()));
         }
         else if (!fValidUnpark)
@@ -1534,8 +1551,8 @@ bool CTransaction::ConnectInputs(CTxDB& txdb, MapPrevTx inputs,
             if (nTxFee < 0)
                 return DoS(100, error("ConnectInputs() : %s nTxFee < 0", GetHash().ToString().substr(0,10).c_str()));
             // ppcoin: enforce transaction fees for every block
-            if (nTxFee < GetMinFee())
-                return fBlock? DoS(100, error("ConnectInputs() : %s not paying required fee=%s, paid=%s", GetHash().ToString().substr(0,10).c_str(), FormatMoney(GetMinFee()).c_str(), FormatMoney(nTxFee).c_str())) : false;
+            if (nTxFee < GetMinFee(pindexBlock))
+                return fBlock? DoS(100, error("ConnectInputs() : %s not paying required fee=%s, paid=%s", GetHash().ToString().substr(0,10).c_str(), FormatMoney(GetMinFee(pindexBlock)).c_str(), FormatMoney(nTxFee).c_str())) : false;
             nFees += nTxFee;
             if (!MoneyRange(nFees))
                 return DoS(100, error("ConnectInputs() : nFees out of range"));
@@ -2152,6 +2169,9 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
         if (!GetCoinStakeAge(pindexNew->nCoinAgeDestroyed))
             return error("AddToBlockIndex() : Unable to get coin age");
         pindexNew->vote.nCoinAgeDestroyed = pindexNew->nCoinAgeDestroyed;
+
+        if (!CalculateVotedFees(pindexNew))
+            return error("Unable to calculate voted fees");
 
         if (!ExtractParkRateResults(*this, pindexNew->vParkRateResult))
             return error("AddToBlockIndex() : Unable to extract park rate results");
@@ -4432,7 +4452,13 @@ CBlock* CreateNewBlock(CReserveKey& reservekey, CWallet* pwallet, bool fProofOfS
                 continue;
 
             // ppcoin: simplify transaction fee - allow free = false
-            int64 nMinFee = tx.GetMinFee();
+            int64 nMinFee;
+            {
+                // nu: use a fake CBlockIndex to simulate the future block index to calculate the effective fee in the block
+                CBlockIndex dummyIndex;
+                dummyIndex.pprev = pindexPrev;
+                nMinFee = tx.GetMinFee(&dummyIndex);
+            }
 
             // Connecting shouldn't fail due to dependency on other memory pool transactions
             // because we're already processing them in order of dependency
@@ -4875,4 +4901,34 @@ void GenerateBitcoins(bool fGenerate, CWallet* pwallet)
             Sleep(10);
         }
     }
+}
+
+int64 CBlockIndex::GetPremium(int64 nValue, int64 nDuration, unsigned char cUnit, int nOffset) const
+{
+    if (nProtocolVersion >= PROTOCOL_V2_0)
+    {
+        const CBlockIndex* peffectiveIndex = this;
+        for (int i = 0; i < PARK_RATE_VOTE_DELAY - nOffset; i++)
+        {
+            peffectiveIndex = peffectiveIndex->pprev;
+            if (!peffectiveIndex)
+                return 0;
+        }
+        return ::GetPremium(nValue, nDuration, cUnit, peffectiveIndex->vParkRateResult);
+    }
+    else
+        return ::GetPremium(nValue, nDuration, cUnit, vParkRateResult);
+}
+
+int64 CBlockIndex::GetSafeMinFee(unsigned char cUnit) const
+{
+    const CBlockIndex* pindex = GetEffectiveFeeIndex()->pnext;
+    int64 nMaxMinFee = 0;
+    for (int i = 0; i < SAFE_FEE_BLOCKS && pindex; i++, pindex = pindex->pnext)
+    {
+        int64 nBlockMinFee = pindex->GetVotedMinFee(cUnit);
+        if (nBlockMinFee > nMaxMinFee)
+            nMaxMinFee = nBlockMinFee;
+    }
+    return nMaxMinFee;
 }

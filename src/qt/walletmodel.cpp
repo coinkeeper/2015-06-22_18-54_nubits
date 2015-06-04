@@ -64,7 +64,8 @@ qint64 WalletModel::getParked() const
 
 qint64 WalletModel::getMinTxFee() const
 {
-    return wallet->GetMinTxFee();
+    LOCK(cs_main);
+    return wallet->GetMinTxFee(pindexBest);
 }
 
 qint64 WalletModel::getMinTxOutAmount() const
@@ -259,14 +260,14 @@ QString WalletModel::park(qint64 amount, qint64 blocks, QString unparkAddress)
     }
 }
 
-qint64 WalletModel::getPremium(qint64 amount, qint64 blocks)
+qint64 WalletModel::getNextPremium(qint64 amount, qint64 blocks)
 {
     {
         LOCK2(cs_main, wallet->cs_wallet);
         if (!pindexBest)
             return 0;
 
-        return pindexBest->GetPremium(amount, blocks, wallet->Unit());
+        return pindexBest->GetNextPremium(amount, blocks, wallet->Unit());
     }
 }
 

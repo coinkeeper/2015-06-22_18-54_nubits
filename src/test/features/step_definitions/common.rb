@@ -24,7 +24,7 @@ def time_travel(seconds)
 end
 
 def time_travel_to(time)
-  seconds = (time - @time).to_i
+  seconds = (time - @time).ceil
   time_travel(seconds)
 end
 
@@ -268,7 +268,7 @@ Then(/^node "(.*?)" should stay at block "(.*?)"$/) do |arg1, arg2|
   expect(node.top_hash).to eq(block)
 end
 
-Given(/^all nodes (?:should )?reach the same height$/) do
+Given(/^all nodes (?:reach|should reach|should be at) the same height$/) do
   wait_for do
     expect(@nodes.values.map(&:block_count).uniq.size).to eq(1)
   end
@@ -366,15 +366,19 @@ When(/^node "(.*?)" finds blocks until custodian "(.*?)" is elected in transacti
   end
 end
 
-When(/^node "(.*?)" sends "(.*?)" to "([^"]*?)" in transaction "(.*?)"$/) do |arg1, arg2, arg3, arg4|
+When(/^node "(.*?)" sends "(.*?)" to "([^"]*?)" in transaction "([^"]*?)"$/) do |arg1, arg2, arg3, arg4|
   @tx[arg4] = @nodes[arg1].rpc "sendtoaddress", @addresses.fetch(arg3, arg3), parse_number(arg2)
+end
+
+When(/^node "(.*?)" sends "(.*?)" (\w+) to "([^"]*?)" in transaction "([^"]*?)"$/) do |arg1, arg2, unit_name, arg3, arg4|
+  @tx[arg4] = @nodes[arg1].unit_rpc unit(unit_name), "sendtoaddress", @addresses[arg3], parse_number(arg2)
 end
 
 When(/^node "(.*?)" sends "(.*?)" to "([^"]*?)"$/) do |arg1, arg2, arg3|
   @nodes[arg1].rpc "sendtoaddress", @addresses.fetch(arg3, arg3), parse_number(arg2)
 end
 
-When(/^node "(.*?)" sends "(.*?)" (NuBits|NBT|NuShares|NSR) to "(.*?)"$/) do |arg1, arg2, unit_name, arg3|
+When(/^node "(.*?)" sends "(.*?)" (\w+) to "([^"]*?)"$/) do |arg1, arg2, unit_name, arg3|
   @nodes[arg1].unit_rpc unit(unit_name), "sendtoaddress", @addresses.fetch(arg3, arg3), parse_number(arg2)
 end
 
@@ -397,7 +401,7 @@ def debug_balance(node, unit_name)
   )
 end
 
-Then(/^node "(.*?)" (?:should reach|reaches) a balance of "([^"]*?)"( NuBits| NuShares|)$/) do |arg1, arg2, unit_name|
+Then(/^node "(.*?)" (?:should reach|reaches) a balance of "([^"]*?)"( NuBits| NuShares| NSR| NBT|)$/) do |arg1, arg2, unit_name|
   node = @nodes[arg1]
   amount = parse_number(arg2)
   begin
@@ -411,7 +415,7 @@ Then(/^node "(.*?)" (?:should reach|reaches) a balance of "([^"]*?)"( NuBits| Nu
   end
 end
 
-Then(/^node "(.*?)" should have a balance of "([^"]*?)"( NuBits|)$/) do |arg1, arg2, unit_name|
+Then(/^node "(.*?)" should have a balance of "([^"]*?)"( NuBits| NuShares| NSR| NBT|)$/) do |arg1, arg2, unit_name|
   node = @nodes[arg1]
   amount = parse_number(arg2)
   begin
@@ -447,7 +451,7 @@ Then(/^node "(.*?)" should reach a balance of "([^"]*?)"( NuBits|) on account "(
   end
 end
 
-Given(/^node "(.*?)" generates a (\w+) address "(.*?)"$/) do |arg1, unit_name, arg2|
+Given(/^node "(.*?)" generates an? (\w+) address "(.*?)"$/) do |arg1, unit_name, arg2|
   unit_name = "NuShares" if unit_name == "new"
   @addresses[arg2] = @nodes[arg1].unit_rpc(unit(unit_name), "getnewaddress")
   @unit[@addresses[arg2]] = unit(unit_name)
@@ -719,4 +723,10 @@ Given(/^the network is at protocol (.*?)$/) do |arg1|
   else
     raise "unknown protocol: #{arg1.inspect}"
   end
+end
+
+When(/^node "(.*?)" resets (?:his|her) vote$/) do |arg1|
+  node = @nodes[arg1]
+  vote = {}
+  node.rpc("setvote", vote)
 end
