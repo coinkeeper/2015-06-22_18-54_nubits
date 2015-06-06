@@ -34,10 +34,10 @@ BOOST_AUTO_TEST_CASE(reload_vote_from_script_tests)
     vote.vMotion.push_back(uint160(123456));
     vote.vMotion.push_back(uint160(3333));
 
-    CScript script = vote.ToScript();
+    CScript script = vote.ToScript(PROTOCOL_VERSION);
 
     CVote voteResult;
-    BOOST_CHECK(ExtractVote(script, voteResult));
+    BOOST_CHECK(ExtractVote(script, voteResult, PROTOCOL_VERSION));
 
 #undef CHECK_VOTE_EQUAL
 #define CHECK_VOTE_EQUAL(value) BOOST_CHECK(voteResult.value == vote.value);
@@ -235,29 +235,6 @@ BOOST_AUTO_TEST_CASE(rate_calculation_from_votes)
     vector<CParkRateVote> newResults;
     BOOST_CHECK(CalculateParkRateResults(vVote, previousRates, newResults));
     BOOST_CHECK(results == newResults);
-
-    // New vote with duplicate duration makes the result invalid
-    parkRateVote.vParkRate.clear();
-    vote.vParkRateVote.clear();
-    parkRateVote.vParkRate.push_back(CParkRate(13, 500));
-    parkRateVote.vParkRate.push_back(CParkRate(13, 400));
-    vote.vParkRateVote.push_back(parkRateVote);
-    vVote.push_back(vote);
-
-    BOOST_CHECK(!CalculateParkRateResults(vVote, previousRates, results));
-    BOOST_CHECK_EQUAL(0, results.size());
-
-    vVote.pop_back();
-    // New vote on another unit is invalid
-    parkRateVote.vParkRate.clear();
-    vote.vParkRateVote.clear();
-    parkRateVote.cUnit = 'A';
-    parkRateVote.vParkRate.push_back(CParkRate(13, 500));
-    vote.vParkRateVote.push_back(parkRateVote);
-    vVote.push_back(vote);
-
-    BOOST_CHECK(!CalculateParkRateResults(vVote, previousRates, results));
-    BOOST_CHECK_EQUAL(0, results.size());
 }
 
 BOOST_AUTO_TEST_CASE(rate_limitation)
@@ -344,25 +321,25 @@ BOOST_AUTO_TEST_CASE(vote_validity_tests)
     CParkRateVote parkRateVote;
 
     // An empty vote is valid
-    BOOST_CHECK(vote.IsValid());
+    BOOST_CHECK(vote.IsValid(PROTOCOL_VERSION));
 
     // A park rate vote on share is invalid
     parkRateVote.cUnit = 'S';
     vote.vParkRateVote.push_back(parkRateVote);
-    BOOST_CHECK(!vote.IsValid());
+    BOOST_CHECK(!vote.IsValid(PROTOCOL_VERSION));
 
     // A park rate vote on unknown unit is invalid
     vote.vParkRateVote[0].cUnit = 'A';
-    BOOST_CHECK(!vote.IsValid());
+    BOOST_CHECK(!vote.IsValid(PROTOCOL_VERSION));
 
     // A park rate vote on nubits is valid
     vote.vParkRateVote[0].cUnit = 'B';
-    BOOST_CHECK(vote.IsValid());
+    BOOST_CHECK(vote.IsValid(PROTOCOL_VERSION));
 
     // Two park rate vote on nubits is invalid
     parkRateVote.cUnit = 'B';
     vote.vParkRateVote.push_back(parkRateVote);
-    BOOST_CHECK(!vote.IsValid());
+    BOOST_CHECK(!vote.IsValid(PROTOCOL_VERSION));
 
     // Park rate with duration and 0 rate is valid
     vote.vParkRateVote.erase(vote.vParkRateVote.end());
@@ -370,19 +347,19 @@ BOOST_AUTO_TEST_CASE(vote_validity_tests)
     parkRate.nCompactDuration = 0;
     parkRate.nRate = 0;
     vote.vParkRateVote[0].vParkRate.push_back(parkRate);
-    BOOST_CHECK(vote.IsValid());
+    BOOST_CHECK(vote.IsValid(PROTOCOL_VERSION));
 
     // Two valid park rates
     parkRate.nCompactDuration = 4;
     parkRate.nRate = 100;
     vote.vParkRateVote[0].vParkRate.push_back(parkRate);
-    BOOST_CHECK(vote.IsValid());
+    BOOST_CHECK(vote.IsValid(PROTOCOL_VERSION));
 
     // Two times the same duration is invalid
     parkRate.nCompactDuration = 4;
     parkRate.nRate = 200;
     vote.vParkRateVote[0].vParkRate.push_back(parkRate);
-    BOOST_CHECK(!vote.IsValid());
+    BOOST_CHECK(!vote.IsValid(PROTOCOL_VERSION));
     vote.vParkRateVote[0].vParkRate.pop_back();
 
     // A valid custodian vote
@@ -391,25 +368,30 @@ BOOST_AUTO_TEST_CASE(vote_validity_tests)
     custodianVote.hashAddress = uint160(1);
     custodianVote.nAmount = 8 * COIN;
     vote.vCustodianVote.push_back(custodianVote);
-    BOOST_CHECK(vote.IsValid());
+    BOOST_CHECK(vote.IsValid(PROTOCOL_VERSION));
 
     // Another unit is invalid
     vote.vCustodianVote[0].cUnit = 'A';
-    BOOST_CHECK(!vote.IsValid());
+    BOOST_CHECK(!vote.IsValid(PROTOCOL_VERSION));
+    // NuShares grants are invalid pre v2.0
+    vote.vCustodianVote[0].cUnit = 'S';
+    BOOST_CHECK(!vote.IsValid(PROTOCOL_V0_5));
+    // But valid after v2.0
+    BOOST_CHECK(vote.IsValid(PROTOCOL_V2_0));
     vote.vCustodianVote[0].cUnit = 'B';
 
     // Voting for the same custodian and amount twice is invalid
     vote.vCustodianVote.push_back(custodianVote);
-    BOOST_CHECK(!vote.IsValid());
+    BOOST_CHECK(!vote.IsValid(PROTOCOL_VERSION));
 
     // If the amount is different it is valid
     vote.vCustodianVote[0].nAmount++;
-    BOOST_CHECK(vote.IsValid());
+    BOOST_CHECK(vote.IsValid(PROTOCOL_VERSION));
     vote.vCustodianVote[0].nAmount--;
 
     // If the address is different it is valid
     vote.vCustodianVote[0].hashAddress++;
-    BOOST_CHECK(vote.IsValid());
+    BOOST_CHECK(vote.IsValid(PROTOCOL_VERSION));
     vote.vCustodianVote[0].hashAddress--;
 }
 
@@ -565,10 +547,9 @@ BOOST_AUTO_TEST_CASE(create_currency_coin_bases)
     BOOST_CHECK(ExtractDestination(tx.vout[0].scriptPubKey, address));
     BOOST_CHECK_EQUAL(uint160(1).ToString(), boost::get<CKeyID>(address).ToString());
 
-    // Unknown units should fail
+    // Unknown units should fail but we can only check if the CVote is valid or not
     vVote[1].vCustodianVote.back().cUnit = '?';
-    BOOST_CHECK(!GenerateCurrencyCoinBases(vVote, mapAlreadyElected, vCurrencyCoinBase));
-    BOOST_CHECK_EQUAL(0, vCurrencyCoinBase.size());
+    BOOST_CHECK(!vVote[1].IsValid(PROTOCOL_VERSION));
 }
 
 BOOST_AUTO_TEST_CASE(premium_calculation)
@@ -624,6 +605,56 @@ BOOST_AUTO_TEST_CASE(premium_calculation)
     BOOST_CHECK_EQUAL((int64)(49.69482421875 * COIN), GetPremium(1 * COIN, (1<<15) + 1000, 'B', vParkRateResult));
 }
 
+BOOST_AUTO_TEST_CASE(effective_park_rates_delayed_after_protocol_v2_0)
+{
+    CBlockIndex *pindexBase;
+
+    int64 nValue = 1000 * COIN;
+    unsigned char cUnit = 'B';
+    int nCompactDuration = 5;
+    int nDuration = (1 << nCompactDuration);
+
+    // Create 100 previous blocks
+    CBlockIndex *pindex = NULL;
+    for (int i = 0; i < 100; i++)
+    {
+        if (i == 0)
+        {
+            pindex = new CBlockIndex;
+            pindexBase = pindex;
+        }
+        else
+        {
+            pindex->pprev = new CBlockIndex;
+            pindex->pprev->pnext = pindex;
+            pindex = pindex->pprev;
+        }
+
+        vector<CParkRateVote> vParkRateResult;
+        CParkRateVote parkRateResult;
+        parkRateResult.cUnit = cUnit;
+        parkRateResult.vParkRate.push_back(CParkRate(nCompactDuration, (i+1) * COIN_PARK_RATE / COIN));
+        vParkRateResult.push_back(parkRateResult);
+        pindex->vParkRateResult = vParkRateResult;
+    }
+
+    pindexBase->nProtocolVersion = PROTOCOL_V0_5;
+    int64 expectedPremium = GetPremium(nValue, nDuration, cUnit, pindexBase->vParkRateResult);
+    BOOST_CHECK_EQUAL(expectedPremium, pindexBase->GetPremium(nValue, nDuration, cUnit));
+    BOOST_CHECK_EQUAL(expectedPremium, pindexBase->GetNextPremium(nValue, nDuration, cUnit));
+
+    pindexBase->nProtocolVersion = PROTOCOL_V2_0;
+    CBlockIndex* pindexEffective = pindexBase;
+    for (int i = 0; i < 60; i++)
+        pindexEffective = pindexEffective->pprev;
+    expectedPremium = GetPremium(nValue, nDuration, cUnit, pindexEffective->vParkRateResult);
+    BOOST_CHECK_EQUAL(expectedPremium, pindexBase->GetPremium(nValue, nDuration, cUnit));
+
+    pindexEffective = pindexEffective->pnext;
+    expectedPremium = GetPremium(nValue, nDuration, cUnit, pindexEffective->vParkRateResult);
+    BOOST_CHECK_EQUAL(expectedPremium, pindexBase->GetNextPremium(nValue, nDuration, cUnit));
+}
+
 BOOST_AUTO_TEST_CASE(vote_v1_unserialization)
 {
     // Serialized with vote v1 code:
@@ -642,7 +673,7 @@ BOOST_AUTO_TEST_CASE(vote_v1_unserialization)
     CScript voteV1Script(voteV1String.begin(), voteV1String.end());
 
     CVote vote;
-    BOOST_CHECK(ExtractVote(voteV1Script, vote));
+    BOOST_CHECK(ExtractVote(voteV1Script, vote, PROTOCOL_VERSION));
 
     BOOST_CHECK_EQUAL(CBitcoinAddress(CKeyID(123465), 'B').ToString(), vote.vCustodianVote[0].GetAddress().ToString());
 }
@@ -666,10 +697,224 @@ BOOST_AUTO_TEST_CASE(vote_before_multi_motion_unserialization)
     CScript oldVoteScript(oldVoteString.begin(), oldVoteString.end());
 
     CVote vote;
-    BOOST_CHECK(ExtractVote(oldVoteScript, vote));
+    BOOST_CHECK(ExtractVote(oldVoteScript, vote, PROTOCOL_VERSION));
 
     BOOST_CHECK_EQUAL(1, vote.vMotion.size());
     BOOST_CHECK_EQUAL(uint160("3f786850e387550fdab836ed7e6dc881de23001b").ToString(), vote.vMotion[0].ToString());
+}
+
+BOOST_AUTO_TEST_CASE(protocol_voting)
+{
+    int PROTOCOL_SWITCH_TIME = 100;
+    int PROTOCOL_VOTES_REQ = 70;
+    int PROTOCOL_VOTES_TOTAL = 80;
+    int PROTOCOL_VERSION = PROTOCOL_V2_0;
+    CBlockIndex* pIndexFirst = NULL;
+    CBlockIndex* pIndexBest = NULL;
+    CBlockIndex* pCurrent = NULL;
+    // Create test indexes
+    for(int i = 0; i < 300; i++)
+    {
+        CBlockIndex* pPrevIndex = pIndexBest;
+        pIndexBest = new CBlockIndex();
+        pIndexBest->nHeight = i;
+        pIndexBest->nTime = i + 1;
+        pIndexBest->pprev = pPrevIndex;
+        if (pPrevIndex)
+            pPrevIndex->pnext = pIndexBest;
+        if (pIndexFirst == NULL)
+            pIndexFirst = pIndexBest;
+    }
+    // Vote passes on switch time as majority achieved
+    for(pCurrent = pIndexFirst; pCurrent != NULL; pCurrent = pCurrent->pnext)
+    {
+        pCurrent->vote.nVersionVote = PROTOCOL_VERSION;
+        // Sets the effective protocol as the previous block
+        pCurrent->nProtocolVersion = GetProtocolForNextBlock(pCurrent->pprev);
+        // Simulate protocol voting, normaly in CalculateEffectiveProtocol()
+        if (IsProtocolActiveForNextBlock(pCurrent->pprev, PROTOCOL_SWITCH_TIME, PROTOCOL_VERSION, PROTOCOL_VOTES_REQ, PROTOCOL_VOTES_TOTAL))
+            pCurrent->nProtocolVersion = PROTOCOL_VERSION;
+        // After the switch time, check that we have the new protocol
+        if (pCurrent->pprev != NULL && pCurrent->pprev->nTime >= PROTOCOL_SWITCH_TIME)
+        {
+            BOOST_CHECK_EQUAL(pCurrent->nProtocolVersion, PROTOCOL_VERSION);
+        }
+        else // Before the switch time we are still using the old protocol
+        {
+            BOOST_CHECK_LT(pCurrent->nProtocolVersion, PROTOCOL_VERSION);
+        }
+    }
+    // Reset
+    for(pCurrent = pIndexFirst; pCurrent != NULL; pCurrent = pCurrent->pnext)
+    {
+        pCurrent->vote.nVersionVote = 0;
+        pCurrent->nProtocolVersion = 0;
+    }
+    // Vote will pass after switch time as majority is not achieved immediately
+    BOOST_CHECK_LT(pIndexBest->nProtocolVersion, PROTOCOL_VERSION);
+    pCurrent = pIndexFirst;
+    // First 100 blocks don't vote for new protocol
+    for(int i = 0; i < 99; i++)
+    {
+        pCurrent->vote.nVersionVote = 0;
+        // Sets the effective protocol as the previous block
+        pCurrent->nProtocolVersion = GetProtocolForNextBlock(pCurrent->pprev);
+        // Simulate protocol voting, normaly in CalculateEffectiveProtocol()
+        if (IsProtocolActiveForNextBlock(pCurrent->pprev, PROTOCOL_SWITCH_TIME, PROTOCOL_VERSION, PROTOCOL_VOTES_REQ, PROTOCOL_VOTES_TOTAL))
+            pCurrent->nProtocolVersion = PROTOCOL_VERSION;
+        BOOST_CHECK_LT(pCurrent->nProtocolVersion, PROTOCOL_VERSION);
+        pCurrent = pCurrent->pnext;
+    }
+    // The rest of the blocks vote for the new protocol so on time 170 we switch protocol
+    for(; pCurrent != NULL; pCurrent = pCurrent->pnext)
+    {
+        pCurrent->vote.nVersionVote = PROTOCOL_VERSION;
+        // Sets the effective protocol as the previous block
+        pCurrent->nProtocolVersion = GetProtocolForNextBlock(pCurrent->pprev);
+        // Simulate protocol voting, normaly in CalculateEffectiveProtocol()
+        if (IsProtocolActiveForNextBlock(pCurrent->pprev, PROTOCOL_SWITCH_TIME, PROTOCOL_VERSION, PROTOCOL_VOTES_REQ, PROTOCOL_VOTES_TOTAL))
+            pCurrent->nProtocolVersion = PROTOCOL_VERSION;
+        if (pCurrent->nTime >= 170)
+            BOOST_CHECK_EQUAL(pCurrent->nProtocolVersion, PROTOCOL_VERSION);
+        else
+            BOOST_CHECK_LT(pCurrent->nProtocolVersion, PROTOCOL_VERSION);
+    }
+    BOOST_CHECK_EQUAL(pIndexBest->nProtocolVersion, PROTOCOL_VERSION);
+    // Free mem
+    while(pIndexBest != NULL)
+    {
+        CBlockIndex* pIndex = pIndexBest;
+        pIndexBest = pIndexBest->pprev;
+        delete pIndex;
+    }
+}
+
+BOOST_AUTO_TEST_CASE(vote_v50000_unserialization)
+{
+    // Serialized with v0.5.2 vote code:
+    /* {
+    CVote vote;
+    CCustodianVote custodianVote;
+    custodianVote.cUnit = 'B';
+    custodianVote.hashAddress = uint160(123465);
+    custodianVote.nAmount = 100 * COIN;
+    vote.vCustodianVote.push_back(custodianVote);
+    vote.vMotion.push_back(uint160(123456));
+    vote.vMotion.push_back(uint160(3333));
+    printf("%s\n", vote.ToScript().ToString().c_str());
+    printf("%s\n", HexStr(vote.ToScript()).c_str());
+    } */
+    vector<unsigned char> oldVoteString = ParseHex("6a514c4d50c3000001420049e201000000000000000000000000000000000040420f0000000000000240e2010000000000000000000000000000000000050d000000000000000000000000000000000000");
+
+    CScript oldVoteScript(oldVoteString.begin(), oldVoteString.end());
+
+    CVote vote;
+    BOOST_CHECK(ExtractVote(oldVoteScript, vote, PROTOCOL_VERSION));
+
+    BOOST_CHECK_EQUAL(0, vote.mapFeeVote.size());
+}
+
+vector<CBlockIndex*> feeVoteIndexes;
+int lastFeeVoteIndex = -1;
+
+void AddFeeVoteBlocks(int nCount, int64 nFeeVoteS, int64 nFeeVoteB)
+{
+    for (int i = 0; i < nCount; i++)
+    {
+        CBlockIndex* pindex = new CBlockIndex();
+        if (lastFeeVoteIndex >= 0)
+        {
+            pindex->pprev = feeVoteIndexes[lastFeeVoteIndex];
+            pindex->pprev->pnext = pindex;
+        }
+        feeVoteIndexes.push_back(pindex);
+        lastFeeVoteIndex++;
+        pindex->nHeight = lastFeeVoteIndex;
+        if (nFeeVoteS != -1)
+            pindex->vote.mapFeeVote['S'] = nFeeVoteS;
+        if (nFeeVoteB != -1)
+            pindex->vote.mapFeeVote['B'] = nFeeVoteB;
+        BOOST_CHECK(CalculateVotedFees(pindex));
+    }
+}
+
+#define CHECK_VOTED_MIN_FEE(nIndex, nExpectedSFee, nExpectedBFee) { \
+    BOOST_CHECK_EQUAL(nExpectedSFee, feeVoteIndexes[nIndex]->GetVotedMinFee('S')); \
+    BOOST_CHECK_EQUAL(nExpectedBFee, feeVoteIndexes[nIndex]->GetVotedMinFee('B')); \
+}
+
+#define CHECK_EFFECTIVE_MIN_FEE(nIndex, nExpectedSFee, nExpectedBFee) { \
+    BOOST_CHECK_EQUAL(nExpectedSFee, feeVoteIndexes[nIndex]->GetMinFee('S')); \
+    BOOST_CHECK_EQUAL(nExpectedBFee, feeVoteIndexes[nIndex]->GetMinFee('B')); \
+}
+
+#define CHECK_SAFE_MIN_FEE(nIndex, nExpectedSFee, nExpectedBFee) { \
+    BOOST_CHECK_EQUAL(nExpectedSFee, feeVoteIndexes[nIndex]->GetSafeMinFee('S')); \
+    BOOST_CHECK_EQUAL(nExpectedBFee, feeVoteIndexes[nIndex]->GetSafeMinFee('B')); \
+}
+
+void ResetFeeVoteBlocks()
+{
+    BOOST_FOREACH(CBlockIndex* pindex, feeVoteIndexes)
+        delete pindex;
+    feeVoteIndexes.clear();
+    lastFeeVoteIndex = -1;
+}
+
+BOOST_AUTO_TEST_CASE(fee_vote_calculation)
+{
+    // 3000 blocks not including any fee vote
+    AddFeeVoteBlocks(3000,     -1, -1);
+    // 3500 blocks voting for a new NSR fee and no vote for the NBT fee
+    AddFeeVoteBlocks( 500, 2*COIN, -1);
+    AddFeeVoteBlocks(1000, 3*COIN, -1);
+    AddFeeVoteBlocks(2000, 1*CENT, -1);
+
+    // The first blocks have the default fee
+    for (int i = 0; i < 4000; i++)
+    {
+        CHECK_VOTED_MIN_FEE    (i, COIN, CENT);
+        CHECK_EFFECTIVE_MIN_FEE(i, COIN, CENT);
+        CHECK_SAFE_MIN_FEE     (i, COIN, CENT);
+    }
+
+    // The votes started at block 3000, so at block 4000 there are 1001 votes so the voted fee changes
+    CHECK_VOTED_MIN_FEE    (4000, 2*COIN, CENT);
+    // But not the other ones
+    CHECK_EFFECTIVE_MIN_FEE(4000,   COIN, CENT);
+    CHECK_SAFE_MIN_FEE     (4000,   COIN, CENT);
+
+    // The effective fee doesn't change until 60 blocks have passed
+    for (int i = 4000; i < 4060; i++)
+        CHECK_EFFECTIVE_MIN_FEE(i, COIN, CENT);
+    CHECK_EFFECTIVE_MIN_FEE(4060, 2*COIN, CENT);
+
+    // The safe fee changes 10 blocks before the effective fee
+    for (int i = 4000; i < 4050; i++)
+        CHECK_SAFE_MIN_FEE(i, COIN, CENT);
+    CHECK_SAFE_MIN_FEE(4050, 2*COIN, CENT);
+
+
+    ResetFeeVoteBlocks();
+
+    AddFeeVoteBlocks(1001, -1, 10*CENT);
+    AddFeeVoteBlocks( 500, -1,  3*CENT);
+    AddFeeVoteBlocks( 500, -1,  5*CENT);
+    AddFeeVoteBlocks(1000, -1,  1*CENT);
+
+    CHECK_VOTED_MIN_FEE(2000, 1*COIN, 5*CENT);
+    CHECK_VOTED_MIN_FEE(2499, 1*COIN, 5*CENT);
+    CHECK_VOTED_MIN_FEE(2500, 1*COIN, 3*CENT);
+
+    CHECK_EFFECTIVE_MIN_FEE(2559, 1*COIN, 5*CENT);
+    CHECK_EFFECTIVE_MIN_FEE(2560, 1*COIN, 3*CENT);
+
+    CHECK_SAFE_MIN_FEE(2549, 1*COIN, 5*CENT);
+    CHECK_SAFE_MIN_FEE(2550, 1*COIN, 5*CENT);
+    CHECK_SAFE_MIN_FEE(2558, 1*COIN, 5*CENT); // the next block still has a 5 cents fee
+    CHECK_SAFE_MIN_FEE(2559, 1*COIN, 3*CENT); // there's no more 5 cents blocks
+
+    ResetFeeVoteBlocks();
 }
 
 BOOST_AUTO_TEST_SUITE_END()

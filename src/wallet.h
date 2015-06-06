@@ -186,6 +186,7 @@ public:
     int64 GetParked() const;
     bool CreateTransaction(const std::vector<std::pair<CScript, int64> >& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, int64& nFeeRet, const CCoinControl *coinControl=NULL);
     bool CreateTransaction(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew, CReserveKey& reservekey, int64& nFeeRet, const CCoinControl *coinControl=NULL);
+    bool CreateBurnTransaction(int64 nValue, CWalletTx& wtxNew, CReserveKey& reservekey, int64& nFeeRet, const CCoinControl *coinControl=NULL);
     bool CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int64 nSearchInterval, CTransaction& txNew, CBlockIndex* pindexprev);
     bool CreateUnparkTransaction(CWalletTx& wtxParked, unsigned int nOut, const CBitcoinAddress& unparkAddress, int64 nAmount, CWalletTx& wtxNew);
     bool CreateUnparkTransaction(const uint256& hashPark, unsigned int nOut, const CBitcoinAddress& unparkAddress, int64 nAmount, CWalletTx& wtxNew);
@@ -193,6 +194,7 @@ public:
     std::string SendMoney(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew, bool fAskFee=false);
     std::string SendMoneyToDestination(const CTxDestination &address, int64 nValue, CWalletTx& wtxNew, bool fAskFee=false);
     std::string Park(int64 nValue, int64 nDuration, const CBitcoinAddress& unparkAddress, CWalletTx& wtxNew, bool fAskFee=false);
+    std::string BurnMoney(int64 nValue, CWalletTx& wtxNew, bool fAskFee=false);
     bool SendUnparkTransactions(std::vector<CWalletTx>& vtxRet);
     bool SendUnparkTransactions() { std::vector<CWalletTx> vtxRet; return SendUnparkTransactions(vtxRet); }
     void CheckUnparkableOutputs();
@@ -228,6 +230,8 @@ public:
     }
     bool IsMine(const CTransaction& tx) const
     {
+        if (tx.cUnit != cUnit)
+            return false;
         BOOST_FOREACH(const CTxOut& txout, tx.vout)
             if (IsMine(txout))
                 return true;
@@ -235,10 +239,14 @@ public:
     }
     bool IsFromMe(const CTransaction& tx) const
     {
+        if (tx.cUnit != cUnit)
+            return false;
         return (GetDebit(tx) > 0);
     }
     int64 GetDebit(const CTransaction& tx) const
     {
+        if (tx.cUnit != cUnit)
+            return 0;
         // Unpark transactions never have debit (the amount was debited when it was parked)
         if (tx.IsUnpark())
             return 0;
@@ -254,6 +262,8 @@ public:
     }
     int64 GetCredit(const CTransaction& tx) const
     {
+        if (tx.cUnit != cUnit)
+            return 0;
         int64 nCredit = 0;
         BOOST_FOREACH(const CTxOut& txout, tx.vout)
         {
@@ -265,6 +275,8 @@ public:
     }
     int64 GetChange(const CTransaction& tx) const
     {
+        if (tx.cUnit != cUnit)
+            return 0;
         int64 nChange = 0;
         BOOST_FOREACH(const CTxOut& txout, tx.vout)
         {
@@ -332,9 +344,14 @@ public:
     void SetVote(const CVote& vote);
     void SaveVote() const;
 
-    int64 GetMinTxFee() const
+    int64 GetMinTxFee(const CBlockIndex *pindex) const
     {
-        return MinTxFee(cUnit);
+        return pindex->GetMinFee(cUnit);
+    }
+
+    int64 GetSafeMinTxFee(const CBlockIndex *pindex) const
+    {
+        return pindex->GetSafeMinFee(cUnit);
     }
 
     int64 GetMinTxOutAmount() const

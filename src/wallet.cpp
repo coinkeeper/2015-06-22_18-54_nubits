@@ -156,7 +156,7 @@ void CWallet::SetBestChain(const CBlockLocator& loc)
 
 void CWallet::SetVote(const CVote& vote)
 {
-    if (!vote.IsValid())
+    if (!vote.IsValid(pindexBest->nProtocolVersion))
         throw runtime_error("Cannot set invalid vote");
 
     if (this->vote != vote)
@@ -321,6 +321,8 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
 
 void CWallet::WalletUpdateSpent(const CTransaction &tx)
 {
+    if (tx.cUnit != cUnit)
+        return;
     // Anytime a signature is successfully verified, it's proof the outpoint is spent.
     // Update the wallet spent flag if it doesn't know due to wallet.dat being
     // restored from backup or the user making copies of wallet.dat.
@@ -458,6 +460,8 @@ bool CWallet::AddToWallet(const CWalletTx& wtxIn)
 // If fUpdate is true, existing transactions will be updated.
 bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate, bool fFindBlock)
 {
+    if (tx.cUnit != cUnit)
+        return false;
     uint256 hash = tx.GetHash();
     {
         LOCK(cs_wallet);
@@ -524,6 +528,9 @@ int64 CWallet::GetDebit(const CTxIn &txin) const
 
 bool CWallet::IsChange(const CTxOut& txout, const CTransaction& tx) const
 {
+    if (tx.cUnit != cUnit)
+        return false;
+
     CTxDestination address;
     txnouttype type;
 
@@ -545,20 +552,23 @@ bool CWallet::IsChange(const CTxOut& txout, const CTransaction& tx) const
             return true;
 
         // nubit: if the output address is the same as any input address, it is change (happens when avatar mode is enabled)
-        BOOST_FOREACH(const CTxIn& txin, tx.vin)
+        if (GetBoolArg("-avatar", (cUnit == 'S')))
         {
-            map<uint256, CWalletTx>::const_iterator mi = mapWallet.find(txin.prevout.hash);
-            if (mi != mapWallet.end())
+            BOOST_FOREACH(const CTxIn& txin, tx.vin)
             {
-                const CWalletTx& prev = (*mi).second;
-                if (txin.prevout.n < prev.vout.size())
+                map<uint256, CWalletTx>::const_iterator mi = mapWallet.find(txin.prevout.hash);
+                if (mi != mapWallet.end())
                 {
-                    const CTxOut& prevout = prev.vout[txin.prevout.n];
-                    CTxDestination inAddress;
-                    if (ExtractDestination(prevout.scriptPubKey, inAddress))
+                    const CWalletTx& prev = (*mi).second;
+                    if (txin.prevout.n < prev.vout.size())
                     {
-                        if (inAddress == address)
-                            return true;
+                        const CTxOut& prevout = prev.vout[txin.prevout.n];
+                        CTxDestination inAddress;
+                        if (ExtractDestination(prevout.scriptPubKey, inAddress))
+                        {
+                            if (inAddress == address)
+                                return true;
+                        }
                     }
                 }
             }
@@ -1286,7 +1296,7 @@ bool CWallet::CreateTransaction(const vector<pair<CScript, int64> >& vecSend, CW
         // txdb must be opened before the mapWallet lock
         CTxDB txdb("r");
         {
-            nFeeRet = GetMinTxFee();
+            nFeeRet = GetSafeMinTxFee(pindexBest);
             loop
             {
                 wtxNew.vin.clear();
@@ -1320,9 +1330,9 @@ bool CWallet::CreateTransaction(const vector<pair<CScript, int64> >& vecSend, CW
                 // if sub-cent change is required, the fee must be raised to at least MIN_TX_FEE
                 // or until nChange becomes zero
                 // NOTE: this depends on the exact behaviour of GetMinFee
-                if (nFeeRet < wtxNew.GetUnitMinFee() && nChange > 0 && nChange < CENT)
+                if (nFeeRet < wtxNew.GetSafeUnitMinFee(pindexBest) && nChange > 0 && nChange < CENT)
                 {
-                    int64 nMoveToFee = min(nChange, wtxNew.GetUnitMinFee() - nFeeRet);
+                    int64 nMoveToFee = min(nChange, wtxNew.GetSafeUnitMinFee(pindexBest) - nFeeRet);
                     nChange -= nMoveToFee;
                     nFeeRet += nMoveToFee;
                 }
@@ -1356,8 +1366,8 @@ bool CWallet::CreateTransaction(const vector<pair<CScript, int64> >& vecSend, CW
                 dPriority /= nBytes;
 
                 // Check that enough fee is included
-                int64 nPayFee = wtxNew.GetUnitMinFee() * (1 + (int64)nBytes / 1000);
-                int64 nMinFee = wtxNew.GetMinFee(nBytes);
+                int64 nPayFee = wtxNew.GetSafeUnitMinFee(pindexBest) * (1 + (int64)nBytes / 1000);
+                int64 nMinFee = wtxNew.GetSafeMinFee(pindexBest, nBytes);
 
                 if (nFeeRet < max(nPayFee, nMinFee))
                 {
@@ -1381,6 +1391,84 @@ bool CWallet::CreateTransaction(CScript scriptPubKey, int64 nValue, CWalletTx& w
     vector< pair<CScript, int64> > vecSend;
     vecSend.push_back(make_pair(scriptPubKey, nValue));
     return CreateTransaction(vecSend, wtxNew, reservekey, nFeeRet, coinControl);
+}
+
+bool CWallet::CreateBurnTransaction(int64 nBurnValue, CWalletTx& wtxNew, CReserveKey& reservekey, int64& nFeeRet, const CCoinControl* coinControl)
+{
+    if (nBurnValue < 0)
+        return false;
+
+    wtxNew.BindWallet(this);
+
+    {
+        LOCK2(cs_main, cs_wallet);
+        // txdb must be opened before the mapWallet lock
+        CTxDB txdb("r");
+        {
+            nFeeRet = GetSafeMinTxFee(pindexBest);
+            loop
+            {
+                wtxNew.vin.clear();
+                wtxNew.vout.clear();
+                wtxNew.fFromMe = true;
+                wtxNew.cUnit = cUnit;
+
+                // Guarantee that there will be always a change output
+                int64 nMinChange = wtxNew.GetMinTxOutAmount();
+                int64 nBurnOrFee = max(nBurnValue, nFeeRet);
+                int64 nTotalValue = nBurnOrFee + nMinChange;
+
+                // Choose coins to use
+                set<pair<const CWalletTx*,unsigned int> > setCoins;
+                int64 nValueIn = 0;
+                if (!SelectCoins(nTotalValue, wtxNew.nTime, setCoins, nValueIn, coinControl))
+                    return false;
+
+                CScript scriptChange;
+                BOOST_FOREACH(PAIRTYPE(const CWalletTx*, unsigned int) pcoin, setCoins)
+                {
+                    scriptChange = pcoin.first->vout[pcoin.second].scriptPubKey;
+                }
+
+                // Set the change output
+                int64 nChange = nValueIn - nBurnOrFee;
+                assert(nChange >= nMinChange);
+                wtxNew.AddChange(nChange, scriptChange, coinControl, reservekey);
+
+                // Fill vin
+                BOOST_FOREACH(const PAIRTYPE(const CWalletTx*,unsigned int)& coin, setCoins)
+                    wtxNew.vin.push_back(CTxIn(coin.first->GetHash(),coin.second));
+
+                // Sign
+                int nIn = 0;
+                BOOST_FOREACH(const PAIRTYPE(const CWalletTx*,unsigned int)& coin, setCoins)
+                    if (!SignSignature(*this, *coin.first, wtxNew, nIn++))
+                        return false;
+
+                // Limit size
+                unsigned int nBytes = ::GetSerializeSize(*(CTransaction*)&wtxNew, SER_NETWORK, PROTOCOL_VERSION);
+                if (nBytes >= MAX_BLOCK_SIZE/4)
+                    return false;
+
+                // Check that enough fee is included
+                int64 nPayFee = wtxNew.GetSafeUnitMinFee(pindexBest) * (1 + (int64)nBytes / 1000);
+                int64 nMinFee = wtxNew.GetSafeMinFee(pindexBest, nBytes);
+
+                if (nBurnOrFee < max(nPayFee, nMinFee))
+                {
+                    nFeeRet = max(nPayFee, nMinFee);
+                    continue;
+                }
+
+                // Fill vtxPrev by copying from previous transactions vtxPrev
+                wtxNew.AddSupportingTransactions(txdb);
+                wtxNew.fTimeReceivedIsTxTime = true;
+
+                break;
+            }
+        }
+    }
+    return true;
 }
 
 static map<const CWalletTx*, uint256> mapTxHash;
@@ -1592,16 +1680,17 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
 
     nCredit += GetProofOfStakeReward();
 
+    int nProtocolVersion = GetProtocolForNextBlock(pindexprev);
+
+    CBlockIndex pindexdummy;
+    pindexdummy.pprev = pindexprev;
+    pindexdummy.nTime = txNew.nTime;
+
     // nubit: Add current vote
-    if (!vote.IsValid())
+    if (!vote.IsValid(nProtocolVersion))
         return error("CreateCoinStake : current vote is invalid");
 
-    int nVersion;
-    if (IsNuProtocolV05(txNew.nTime))
-        nVersion = PROTOCOL_VERSION;
-    else
-        nVersion = 40500;
-    txNew.vout.push_back(CTxOut(0, vote.ToScript(nVersion)));
+    txNew.vout.push_back(CTxOut(0, vote.ToScript(nProtocolVersion)));
 
     // nubit: The result of the vote is stored in the CoinStake transaction
     CParkRateVote parkRateResult;
@@ -1618,6 +1707,8 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
 
     BOOST_FOREACH(const CParkRateVote& parkRateResult, vParkRateResult)
         txNew.vout.push_back(CTxOut(0, parkRateResult.ToParkRateResultScript()));
+
+    CalculateVotedFees(&pindexdummy);
 
     int64 nMinFee = 0;
     loop
@@ -1646,9 +1737,9 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             return error("CreateCoinStake : exceeded coinstake size limit");
 
         // Check enough fee is paid
-        if (nMinFee < txNew.GetMinFee() - txNew.GetUnitMinFee())
+        if (nMinFee < txNew.GetMinFee(&pindexdummy) - txNew.GetUnitMinFee(&pindexdummy))
         {
-            nMinFee = txNew.GetMinFee() - txNew.GetUnitMinFee();
+            nMinFee = txNew.GetMinFee(&pindexdummy) - txNew.GetUnitMinFee(&pindexdummy);
             continue; // try signing again
         }
         else
@@ -1824,7 +1915,7 @@ string CWallet::SendMoney(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew,
     {
         string strError;
         if (nValue + nFeeRequired > GetBalance())
-            strError = strprintf(_("Error: This transaction requires a transaction fee of at least %s because of its amount, complexity, or use of recently received funds  "), FormatMoney(nFeeRequired).c_str());
+            strError = strprintf(_("Error: Not enough funds. This transaction requires a transaction fee of at least %s  "), FormatMoney(nFeeRequired).c_str());
         else
             strError = _("Error: Transaction creation failed  ");
         printf("SendMoney() : %s\n", strError.c_str());
@@ -1848,7 +1939,7 @@ string CWallet::SendMoneyToDestination(const CTxDestination& address, int64 nVal
     // Check amount
     if (nValue <= 0)
         return _("Invalid amount");
-    if (nValue + MinTxFee(cUnit) > GetBalance())
+    if (nValue + GetSafeMinTxFee(pindexBest) > GetBalance())
         return _("Insufficient funds");
 
     // Parse bitcoin address
@@ -1870,10 +1961,10 @@ std::string CWallet::Park(int64 nValue, int64 nDuration, const CBitcoinAddress& 
     // Check amount
     if (nValue <= 0)
         return _("Invalid amount");
-    if (nValue + GetMinTxFee() > GetBalance())
+    if (nValue + GetSafeMinTxFee(pindexBest) > GetBalance())
         return _("Insufficient funds");
 
-    int64 nPremium = pindexBest->GetPremium(nValue, nDuration, cUnit);
+    int64 nPremium = pindexBest->GetNextPremium(nValue, nDuration, cUnit);
 
     if (nPremium == 0)
         return _("No premium for this duration");
@@ -1905,6 +1996,45 @@ std::string CWallet::Park(int64 nValue, int64 nDuration, const CBitcoinAddress& 
     return SendMoney(script, nValue, wtxNew, fAskFee);
 }
 
+
+string CWallet::BurnMoney(int64 nValue, CWalletTx& wtxNew, bool fAskFee)
+{
+    CReserveKey reservekey(this);
+    int64 nFeeRequired;
+
+    if (IsLocked())
+    {
+        string strError = _("Error: Portfolio locked, unable to create transaction  ");
+        printf("BurnMoney() : %s\n", strError.c_str());
+        return strError;
+    }
+    if (fWalletUnlockMintOnly)
+    {
+        string strError = _("Error: Portfolio unlocked for block minting only, unable to create transaction.");
+        printf("BurnMoney() : %s\n", strError.c_str());
+        return strError;
+    }
+    if (!CreateBurnTransaction(nValue, wtxNew, reservekey, nFeeRequired))
+    {
+        string strError;
+        if (nValue + nFeeRequired > GetBalance())
+            strError = strprintf(_("Error: Not enough funds. This transaction requires a transaction fee of at least %s  "), FormatMoney(nFeeRequired).c_str());
+        else
+            strError = _("Error: Transaction creation failed  ");
+        printf("BurnMoney() : %s\n", strError.c_str());
+        return strError;
+    }
+
+    if (fAskFee && !ThreadSafeAskFee(nFeeRequired, _("Sending..."), wtxNew.cUnit))
+        return "ABORTED";
+
+
+    if (!CommitTransaction(wtxNew, reservekey))
+        return _("Error: The transaction was rejected.  This might happen if some of the shares in your portfolio were already spent, such as if you used a copy of wallet.dat and shares were spent in the copy but not marked as spent here.");
+
+    MainFrameRepaint();
+    return "";
+}
 
 
 int CWallet::LoadWallet(bool& fFirstRunRet)

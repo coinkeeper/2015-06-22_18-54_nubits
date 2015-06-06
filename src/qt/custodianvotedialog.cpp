@@ -95,9 +95,9 @@ void CustodianVoteDialog::accept()
 
         QString addressString = addressItem ? addressItem->text() : "";
         CBitcoinAddress address(addressString.toStdString());
-        unsigned char unit = address.GetUnit();
-        // TODO do we need a v06 check here to enable NSR custodians?
-        if (!ValidUnit(unit) || !address.IsValid(unit))
+        unsigned char cUnit = address.GetUnit();
+
+        if (!IsValidUnit(cUnit) || (pindexBest->nProtocolVersion < PROTOCOL_V2_0 && !IsValidCurrency(cUnit)) || !address.IsValid(cUnit))
         {
             error(tr("Invalid address on row %1: %2").arg(row).arg(addressString));
             return;
@@ -126,6 +126,11 @@ void CustodianVoteDialog::accept()
 
     CVote vote = model->getVote();
     vote.vCustodianVote = vVote;
+    if (!vote.IsValid(model->getProtocolVersion()))
+    {
+        error(tr("The new vote is invalid"));
+        return;
+    }
     model->setVote(vote);
     QDialog::accept();
 }

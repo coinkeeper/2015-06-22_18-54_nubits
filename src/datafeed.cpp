@@ -174,7 +174,7 @@ bool GetVoteFromDataFeed(const CDataFeed& dataFeed, CVote& voteRet)
             throw runtime_error("Data feed returned invalid JSON data");
 
         CVote vote = ParseVote(valReply.get_obj());
-        if (!vote.IsValid())
+        if (!vote.IsValid(pindexBest->nProtocolVersion))
             throw runtime_error("Data feed vote is invalid");
 
         voteRet = vote;
@@ -214,13 +214,10 @@ CVote ParseVote(const Object& objVote)
                             throw runtime_error("Invalid address");
 
                         custodianVote.SetAddress(address);
-                        // TODO here we need to check the vote.nEffectiveProtocol
-                        // to enable NSR grants. For now leave it without check for testing.
-                        // This was the original branch
-                        // if (custodianVote.cUnit == 'S' || !ValidUnit(custodianVote.cUnit))
-                        // and this is the proposed branch
-                        // if ((vote.nEffectiveProtocol < 60000 && custodianVote.cUnit == 'S') || !ValidUnit(custodianVote.cUnit))
-                        if (!ValidUnit(custodianVote.cUnit))
+
+                        // We only check if the unit is valid, not if a particular unit is valid
+                        // for the current protocol version. For this call CVote::IsValid
+                        if (!IsValidUnit(custodianVote.cUnit))
                             throw runtime_error("Invalid custodian unit");
                     }
                     else if (custodianVoteAttribute.name_ == "amount")
@@ -241,7 +238,7 @@ CVote ParseVote(const Object& objVote)
                     if (parkRateVoteAttribute.name_ == "unit")
                     {
                         parkRateVote.cUnit = parkRateVoteAttribute.value_.get_str().c_str()[0];
-                        if (parkRateVote.cUnit == 'S' || !ValidUnit(parkRateVote.cUnit))
+                        if (!IsValidCurrency(parkRateVote.cUnit))
                             throw runtime_error("Invalid park rate unit");
                     }
                     else if (parkRateVoteAttribute.name_ == "rates")
@@ -283,6 +280,28 @@ CVote ParseVote(const Object& objVote)
                 vote.vParkRateVote.push_back(parkRateVote);
             }
         }
+        else if (voteAttribute.name_ == "fees")
+        {
+            map<unsigned char, uint32_t> feeVotes;
+            BOOST_FOREACH(const Pair& feeVoteAttribute, voteAttribute.value_.get_obj())
+            {
+                string unitString = feeVoteAttribute.name_;
+                if (unitString.size() != 1)
+                    throw runtime_error("Invalid fee unit");
+
+                unsigned char cUnit = unitString[0];
+                if (!IsValidUnit(cUnit))
+                    throw runtime_error("Invalid fee unit");
+
+                double feeAsCoin = feeVoteAttribute.value_.get_real();
+                if (feeAsCoin < 0 || feeAsCoin * COIN > numeric_limits<uint32_t>::max())
+                    throw runtime_error("Invalid fee amount");
+                uint32_t feeAsSatoshi = feeAsCoin * COIN;
+
+                feeVotes[cUnit] = feeAsSatoshi;
+            }
+            vote.mapFeeVote = feeVotes;
+        }
         else
             throw runtime_error("Invalid vote object");
     }
@@ -317,6 +336,8 @@ void UpdateFromDataFeed()
                 newVote.vParkRateVote = feedVote.vParkRateVote;
             else if (sPart == "motions")
                 newVote.vMotion = feedVote.vMotion;
+            else if (sPart == "fees")
+                newVote.mapFeeVote = feedVote.mapFeeVote;
             else
                 throw runtime_error("Invalid part");
         }

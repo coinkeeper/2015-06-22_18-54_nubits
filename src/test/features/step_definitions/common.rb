@@ -1,3 +1,5 @@
+PROTOCOL_V2_0 = 2000000
+
 Before do
   @blocks = {}
   @addresses = {}
@@ -19,6 +21,11 @@ def time_travel(seconds)
   @nodes.values.each do |node|
     node.rpc "timetravel", seconds
   end
+end
+
+def time_travel_to(time)
+  seconds = time - @time
+  time_travel(seconds.ceil)
 end
 
 Given(/^a network with nodes? (.+)(?: able to mint)?$/) do |node_names|
@@ -223,8 +230,8 @@ When(/^node "(.*?)" finds (\d+) blocks$/) do |arg1, arg2|
   end
 end
 
-When(/^node "(.*?)" finds (\d+) blocks received by all (?:nodes|other nodes)$/) do |arg1, arg2|
-  step "node \"#{arg1}\" finds #{arg2} blocks"
+When(/^node "(.*?)" finds (\d+|a) blocks? received by all (?:nodes|other nodes)$/) do |arg1, arg2|
+  step "node \"#{arg1}\" finds #{arg2 == "a" ? 1 : arg2} blocks"
   step "all nodes reach the same height"
 end
 
@@ -253,20 +260,6 @@ Then(/^nodes? (.+) (?:should be at|should reach|reach|reaches|is at|are at) bloc
   end
 end
 
-# ^^^^ THIS IS THE SAME LIKE THE ABOVE ^^^^ Remove it?
-# When(/^node "(.*?)" reaches block "(.*?)"$/) do |arg1, arg2|
-#   node = @nodes[arg1]
-#   block = @blocks[arg2]
-#   begin
-#     wait_for do
-#       expect(node.top_hash).to eq(block)
-#     end
-#   rescue Exception
-#     p @blocks
-#     raise
-#   end
-# end
-
 Then(/^node "(.*?)" should stay at block "(.*?)"$/) do |arg1, arg2|
   node = @nodes[arg1]
   block = @blocks[arg2]
@@ -275,7 +268,7 @@ Then(/^node "(.*?)" should stay at block "(.*?)"$/) do |arg1, arg2|
   expect(node.top_hash).to eq(block)
 end
 
-Given(/^all nodes (?:should )?reach the same height$/) do
+Given(/^all nodes (?:reach|should reach|should be at) the same height$/) do
   wait_for do
     expect(@nodes.values.map(&:block_count).uniq.size).to eq(1)
   end
@@ -373,16 +366,20 @@ When(/^node "(.*?)" finds blocks until custodian "(.*?)" is elected in transacti
   end
 end
 
-When(/^node "(.*?)" sends "(.*?)" to "([^"]*?)" in transaction "(.*?)"$/) do |arg1, arg2, arg3, arg4|
-  @tx[arg4] = @nodes[arg1].rpc "sendtoaddress", @addresses[arg3], parse_number(arg2)
+When(/^node "(.*?)" sends "(.*?)" to "([^"]*?)" in transaction "([^"]*?)"$/) do |arg1, arg2, arg3, arg4|
+  @tx[arg4] = @nodes[arg1].rpc "sendtoaddress", @addresses.fetch(arg3, arg3), parse_number(arg2)
+end
+
+When(/^node "(.*?)" sends "(.*?)" (\w+) to "([^"]*?)" in transaction "([^"]*?)"$/) do |arg1, arg2, unit_name, arg3, arg4|
+  @tx[arg4] = @nodes[arg1].unit_rpc unit(unit_name), "sendtoaddress", @addresses[arg3], parse_number(arg2)
 end
 
 When(/^node "(.*?)" sends "(.*?)" to "([^"]*?)"$/) do |arg1, arg2, arg3|
-  @nodes[arg1].rpc "sendtoaddress", @addresses[arg3], parse_number(arg2)
+  @nodes[arg1].rpc "sendtoaddress", @addresses.fetch(arg3, arg3), parse_number(arg2)
 end
 
-When(/^node "(.*?)" sends "(.*?)" (NuBits|NBT|NuShares|NSR) to "(.*?)"$/) do |arg1, arg2, unit_name, arg3|
-  @nodes[arg1].unit_rpc unit(unit_name), "sendtoaddress", @addresses[arg3], parse_number(arg2)
+When(/^node "(.*?)" sends "(.*?)" (\w+) to "([^"]*?)"$/) do |arg1, arg2, unit_name, arg3|
+  @nodes[arg1].unit_rpc unit(unit_name), "sendtoaddress", @addresses.fetch(arg3, arg3), parse_number(arg2)
 end
 
 Given(/^node "(.*?)" sends "(.*?)" (\w+) to node "(.*?)"$/) do |arg1, arg2, arg3, arg4|
@@ -395,15 +392,6 @@ Given(/^node "(.*?)" sends "(.*?)" (\w+) to node "(.*?)"$/) do |arg1, arg2, arg3
   node.unit_rpc(unit, "sendtoaddress", target_address, amount)
 end
 
-When(/^node "(.*?)" finds a block received by all other nodes$/) do |arg1|
-  node = @nodes[arg1]
-  block = node.generate_stake
-  wait_for do
-    main = @nodes.values.map(&:top_hash)
-    main.all? { |hash| hash == block }
-  end
-end
-
 def debug_balance(node, unit_name)
   require 'pp'
   pp(
@@ -413,7 +401,7 @@ def debug_balance(node, unit_name)
   )
 end
 
-Then(/^node "(.*?)" (?:should reach|reaches) a balance of "([^"]*?)"( NuBits| NuShares|)$/) do |arg1, arg2, unit_name|
+Then(/^node "(.*?)" (?:should reach|reaches) a balance of "([^"]*?)"( NuBits| NuShares| NSR| NBT|)$/) do |arg1, arg2, unit_name|
   node = @nodes[arg1]
   amount = parse_number(arg2)
   begin
@@ -427,7 +415,7 @@ Then(/^node "(.*?)" (?:should reach|reaches) a balance of "([^"]*?)"( NuBits| Nu
   end
 end
 
-Then(/^node "(.*?)" should have a balance of "([^"]*?)"( NuBits|)$/) do |arg1, arg2, unit_name|
+Then(/^node "(.*?)" should have a balance of "([^"]*?)"( NuBits| NuShares| NSR| NBT|)$/) do |arg1, arg2, unit_name|
   node = @nodes[arg1]
   amount = parse_number(arg2)
   begin
@@ -463,7 +451,7 @@ Then(/^node "(.*?)" should reach a balance of "([^"]*?)"( NuBits|) on account "(
   end
 end
 
-Given(/^node "(.*?)" generates a (\w+) address "(.*?)"$/) do |arg1, unit_name, arg2|
+Given(/^node "(.*?)" generates an? (\w+) address "(.*?)"$/) do |arg1, unit_name, arg2|
   unit_name = "NuShares" if unit_name == "new"
   @addresses[arg2] = @nodes[arg1].unit_rpc(unit(unit_name), "getnewaddress")
   @unit[@addresses[arg2]] = unit(unit_name)
@@ -485,7 +473,7 @@ Then(/^all nodes should (?:have|reach) (\d+) transactions? in memory pool$/) do 
   end
 end
 
-Then(/^node "(.*?)" should (?:have|reach) (\d+) transactions? in memory pool$/) do |arg1, arg2|
+Then(/^node "(.*?)" (?:should have|should reach|reaches) (\d+) transactions? in memory pool$/) do |arg1, arg2|
   node = @nodes[arg1]
   wait_for do
     expect(node.rpc("getmininginfo")["pooledtx"]).to eq(arg2.to_i)
@@ -556,9 +544,9 @@ end
 When(/^the nodes travel to the Nu protocol v(\d+) switch time$/) do |arg1|
   if arg1.to_i == 5
     switch_time = Time.at(1414195200)
-  elsif arg1.to_i == 6
-    # TODO redefine v06 switch time
-    switch_time = Time.at(1431648000)
+  elsif arg1.to_i == 20
+    switch_time = File.read(File.expand_path("../../../../version.h", __FILE__)).scan(/PROTOCOL_V2_0_TEST_VOTE_TIME = (\d+);/).first.first
+    switch_time = Time.at(switch_time.to_i)
   else
     raise
   end
@@ -567,6 +555,10 @@ When(/^the nodes travel to the Nu protocol v(\d+) switch time$/) do |arg1|
     node.rpc("timetravel", (switch_time - time).round)
   end
   @time = switch_time
+end
+
+Then(/^node "(.*?)" should use protocol (\d+)$/) do |arg1, arg2|
+  expect(@nodes[arg1].info["protocolversion"]).to eq(arg2.to_i)
 end
 
 Then(/^node "(.*?)" should have (\d+) (\w+) transactions?$/) do |arg1, arg2, unit_name|
@@ -580,7 +572,7 @@ Then(/^node "(.*?)" should have (\d+) (\w+) transactions?$/) do |arg1, arg2, uni
   end
 end
 
-Then(/^the (\d+)\S+ transaction should be a send of "(.*?)" to "(.*?)"$/) do |arg1, arg2, arg3|
+Then(/^the (\d+)\S+ transaction should be a send of "([^"]*?)" to "(.*?)"$/) do |arg1, arg2, arg3|
   begin
     tx = @listtransactions[arg1.to_i - 1]
     expect(tx["category"]).to eq("send")
@@ -600,12 +592,24 @@ Then(/^the (\d+)\S+ transaction should be a receive of "(.*?)" to "(.*?)"$/) do 
   expect(tx["address"]).to eq(@addresses[arg3])
 end
 
-Then(/^the transaction should be a send of "(.*?)" to "(.*?)"$/) do |arg1, arg2|
+Then(/^the transaction should be a send of "([^"]*?)" to "(.*?)"$/) do |arg1, arg2|
   step "the 1st transaction should be a send of \"#{arg1}\" to \"#{arg2}\""
 end
 
 Then(/^the transaction should be a receive of "(.*?)" to "(.*?)"$/) do |arg1, arg2|
   step "the 1st transaction should be a receive of \"#{arg1}\" to \"#{arg2}\""
+end
+
+Then(/^the transaction should be a receive of "([^"]*?)"$/) do |arg1|
+  tx = @listtransactions[0]
+  expect(tx["category"]).to eq("receive")
+  expect(tx["amount"]).to eq(parse_number(arg1))
+end
+
+Then(/^the (\d+)\S+ transaction should be a send of "([^"]*?)"$/) do |arg1, arg2|
+  tx = @listtransactions[arg1.to_i - 1]
+  expect(tx["category"]).to eq("send")
+  expect(tx["amount"]).to eq(-parse_number(arg2))
 end
 
 Then(/^the (\d+)st transaction should be the initial distribution of shares$/) do |arg1|
@@ -689,4 +693,40 @@ Then(/^node "(.*?)" should stay at (\d+) transactions in memory pool$/) do |arg1
   expect(node.rpc("getmininginfo")["pooledtx"]).to eq(count)
   sleep 2
   expect(node.rpc("getmininginfo")["pooledtx"]).to eq(count)
+end
+
+When(/^node "(.*?)" imports the private key "(.*?)" into the (\S+) wallet$/) do |arg1, arg2, arg3|
+  node = @nodes[arg1]
+  private_key = arg2
+  unit_name = arg3
+  node.unit_rpc(unit(unit_name), "importprivkey", private_key)
+end
+
+Given(/^the network is at protocol (.*?)$/) do |arg1|
+  node_name = @nodes.keys.first
+  node = @nodes[node_name]
+  case arg1
+  when "0.5"
+    if node.info["timestamp"] < 1414195200
+      step %Q(the nodes travel to the Nu protocol v05 switch time)
+      step %Q(node "#{node_name}" finds 1 blocks received by all nodes)
+    end
+  when "2.0"
+    if node.info["protocolversion"] < PROTOCOL_V2_0
+      step %Q(the network is at protocol 0.5)
+      step %Q(node "#{node_name}" finds 9 blocks received by all nodes)
+      step %Q(node "#{node_name}" should use protocol 50000)
+      step %Q(the nodes travel to the Nu protocol v20 switch time)
+      step %Q(node "#{node_name}" finds 2 blocks received by all nodes)
+      step %Q(node "#{node_name}" should use protocol #{PROTOCOL_V2_0})
+    end
+  else
+    raise "unknown protocol: #{arg1.inspect}"
+  end
+end
+
+When(/^node "(.*?)" resets (?:his|her) vote$/) do |arg1|
+  node = @nodes[arg1]
+  vote = {}
+  node.rpc("setvote", vote)
 end

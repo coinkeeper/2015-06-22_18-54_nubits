@@ -123,8 +123,8 @@ public:
     // nubit: Park coins
     QString park(qint64 amount, qint64 blocks, QString unparkAddress);
 
-    // nubit: Get current premium for this amount and duration
-    qint64 getPremium(qint64 amount, qint64 blocks);
+    // nubit: Get premium of the next block for this amount and duration
+    qint64 getNextPremium(qint64 amount, qint64 blocks);
 
     CVote getVote();
     void setVote(const CVote& vote);
@@ -182,6 +182,8 @@ public:
     void setDataFeed(const CDataFeed&);
     void updateFromDataFeed();
     QString getDataFeedError() const;
+
+    int getProtocolVersion() const;
 
 private:
     CWallet *wallet;

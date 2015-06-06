@@ -23,7 +23,6 @@ public:
     bool fScript;
     uint160 hashAddress;
     int64 nAmount;
-    // TODO
 
     CCustodianVote() :
         cUnit('?'),
@@ -33,7 +32,7 @@ public:
     {
     }
 
-    bool IsValid() const;
+    bool IsValid(int nProtocolVersion) const;
 
     IMPLEMENT_SERIALIZE
     (
@@ -224,34 +223,27 @@ public:
 class CVote
 {
 public:
-    int nVersion;
+    int nVersionVote;
     std::vector<CCustodianVote> vCustodianVote;
     std::vector<CParkRateVote> vParkRateVote;
     std::vector<uint160> vMotion;
+    std::map<unsigned char, uint32_t> mapFeeVote;
 
     int64 nCoinAgeDestroyed;
 
     CVote() :
-        nVersion(PROTOCOL_VERSION),
+        nVersionVote(PROTOCOL_VERSION),
         nCoinAgeDestroyed(0)
-    {
-    }
-
-    CVote(const CVote &original, int nVersion) :
-        nVersion(nVersion),
-        vCustodianVote(original.vCustodianVote),
-        vParkRateVote(original.vParkRateVote),
-        vMotion(original.vMotion),
-        nCoinAgeDestroyed(original.nCoinAgeDestroyed)
     {
     }
 
     void SetNull()
     {
-        nVersion = 0;
+        nVersionVote = 0;
         vCustodianVote.clear();
         vParkRateVote.clear();
         vMotion.clear();
+        mapFeeVote.clear();
         nCoinAgeDestroyed = 0;
     }
 
@@ -295,32 +287,42 @@ public:
 
     IMPLEMENT_SERIALIZE
     (
-        READWRITE(this->nVersion);
-        nVersion = this->nVersion;
+        READWRITE(nVersionVote);
+        // Before v2.0 the nVersionVote was used to specify the serialization version
+        if (nVersionVote < PROTOCOL_V2_0)
+        {
+            nVersion = nVersionVote;
+            if (fRead) const_cast<CVote*>(this)->nVersionVote = 0;
+        }
+
         READWRITE(vCustodianVote);
         READWRITE(vParkRateVote);
-        if (nVersion >= 50000)
+        if (nVersion >= PROTOCOL_V0_5)
             READWRITE(vMotion);
         else
             ReadWriteSingleMotion(s, nType, nVersion, ser_action);
+        if (nVersion >= PROTOCOL_V2_0)
+            READWRITE(mapFeeVote);
+        else if (fRead)
+            const_cast<CVote*>(this)->mapFeeVote.clear();
     )
 
-    CScript ToScript(int nVersion) const;
-    CScript ToScript() const
+    CScript ToScript(int nProtocolVersion) const;
+
+    bool IsValid(int nProtocolVersion) const;
+
+    void Upgrade()
     {
-        return ToScript(nVersion);
+        nVersionVote = PROTOCOL_VERSION;
     }
-
-    bool IsValid() const;
-
-    void Upgrade();
 
     inline bool operator==(const CVote& other) const
     {
-        return (nVersion == other.nVersion &&
+        return (nVersionVote == other.nVersionVote &&
                 vCustodianVote == other.vCustodianVote &&
                 vParkRateVote == other.vParkRateVote &&
-                vMotion == other.vMotion);
+                vMotion == other.vMotion &&
+                mapFeeVote == other.mapFeeVote);
     }
     inline bool operator!=(const CVote& other) const
     {
@@ -329,8 +331,8 @@ public:
 };
 
 bool IsVote(const CScript& scriptPubKey);
-bool ExtractVote(const CScript& scriptPubKey, CVote& voteRet);
-bool ExtractVote(const CBlock& block, CVote& voteRet);
+bool ExtractVote(const CScript& scriptPubKey, CVote& voteRet, int nProtocolVersion);
+bool ExtractVote(const CBlock& block, CVote& voteRet, int nProtocolVersion);
 bool ExtractVotes(const CBlock &block, const CBlockIndex *pindexprev, unsigned int nCount, std::vector<CVote> &vVoteResult);
 
 bool IsParkRateResult(const CScript& scriptPubKey);
@@ -342,5 +344,10 @@ bool CalculateParkRateResults(const CVote &vote, const CBlockIndex *pindexprev, 
 int64 GetPremium(int64 nValue, int64 nDuration, unsigned char cUnit, const std::vector<CParkRateVote>& vParkRateResult);
 
 bool GenerateCurrencyCoinBases(const std::vector<CVote> vVote, const std::map<CBitcoinAddress, CBlockIndex*>& mapAlreadyElected, std::vector<CTransaction>& vCurrencyCoinBaseRet);
+
+int GetProtocolForNextBlock(const CBlockIndex* pPrevIndex);
+bool IsProtocolActiveForNextBlock(const CBlockIndex* pPrevIndex, int nSwitchTime, int nProtocolVersion, int nRequired=PROTOCOL_SWITCH_REQUIRE_VOTES, int nToCheck=PROTOCOL_SWITCH_COUNT_VOTES);
+
+bool CalculateVotedFees(CBlockIndex* pindex);
 
 #endif
