@@ -214,7 +214,10 @@ CVote ParseVote(const Object& objVote)
                             throw runtime_error("Invalid address");
 
                         custodianVote.SetAddress(address);
-                        if (!IsValidCurrency(custodianVote.cUnit))
+
+                        // We only check if the unit is valid, not if a particular unit is valid
+                        // for the current protocol version. For this call CVote::IsValid
+                        if (!IsValidUnit(custodianVote.cUnit))
                             throw runtime_error("Invalid custodian unit");
                     }
                     else if (custodianVoteAttribute.name_ == "amount")

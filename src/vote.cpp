@@ -354,7 +354,8 @@ bool CParkRate::IsValid() const
 
 bool CCustodianVote::IsValid(int nProtocolVersion) const
 {
-    if (!IsValidCurrency(cUnit))
+    // After v2.0 any unit is valid as a custodian grant
+    if (!IsValidUnit(cUnit) || (nProtocolVersion < PROTOCOL_V2_0 && !IsValidCurrency(cUnit)))
         return false;
     if (!MoneyRange(nAmount))
         return false;
@@ -487,7 +488,10 @@ bool GenerateCurrencyCoinBases(const std::vector<CVote> vVote, const std::map<CB
 
         CTransaction tx;
         tx.cUnit = cUnit;
-        tx.vin.push_back(CTxIn());
+        if (cUnit == 'S')
+            tx.vin.push_back(CTxIn(0, -2));
+        else
+            tx.vin.push_back(CTxIn());
 
         BOOST_FOREACH(const GrantedAmountMap::value_type& grantedAmount, mapGrantedAmount)
         {

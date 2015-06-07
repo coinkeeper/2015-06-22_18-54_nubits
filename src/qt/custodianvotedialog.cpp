@@ -95,8 +95,9 @@ void CustodianVoteDialog::accept()
 
         QString addressString = addressItem ? addressItem->text() : "";
         CBitcoinAddress address(addressString.toStdString());
-        unsigned char unit = address.GetUnit();
-        if (unit == '?' || unit == 'S' || !address.IsValid(unit))
+        unsigned char cUnit = address.GetUnit();
+
+        if (!IsValidUnit(cUnit) || (pindexBest->nProtocolVersion < PROTOCOL_V2_0 && !IsValidCurrency(cUnit)) || !address.IsValid(cUnit))
         {
             error(tr("Invalid address on row %1: %2").arg(row).arg(addressString));
             return;

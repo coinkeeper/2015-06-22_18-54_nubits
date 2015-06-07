@@ -70,7 +70,7 @@ QString TransactionDesc::toHTML(CWallet *wallet, CWalletTx &wtx)
         {
             strHTML += tr("<b>Source:</b> Generated<br>");
         }
-        else if (wtx.IsCurrencyCoinBase())
+        else if (wtx.IsCustodianGrant())
         {
             strHTML += tr("<b>Source:</b> Generated currency<br>");
         }

@@ -667,7 +667,7 @@ bool CTxDB::LoadBlockIndex()
 
             BOOST_FOREACH(CTransaction& tx, block.vtx)
             {
-                if (tx.IsCoinBase() || tx.IsCurrencyCoinBase())
+                if (tx.IsCoinBase() || tx.IsCustodianGrant())
                     mapValueOut[tx.cUnit] += tx.GetValueOut();
                 else
                 {

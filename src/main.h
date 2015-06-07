@@ -618,9 +618,12 @@ public:
         return (cUnit == 'S' && vin.size() > 0 && (!vin[0].prevout.IsNull()) && vout.size() >= 2 && vout[0].IsEmpty());
     }
 
-    bool IsCurrencyCoinBase() const
+    bool IsCustodianGrant() const
     {
-        return (cUnit != 'S' && vin.size() == 1 && vin[0].prevout.IsNull() && vout.size() >= 1);
+        if (cUnit == 'S')
+            return (vin.size() == 1 && vin[0].prevout.hash == 0 && vin[0].prevout.n == -2 && vout.size() >= 1);
+        else
+            return (IsValidCurrency(cUnit) && vin.size() == 1 && vin[0].prevout.IsNull() && vout.size() >= 1);
     }
 
     bool IsParked(unsigned int nOut) const
