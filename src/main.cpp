@@ -4903,7 +4903,7 @@ void GenerateBitcoins(bool fGenerate, CWallet* pwallet)
     }
 }
 
-int64 CBlockIndex::GetPremium(int64 nValue, int64 nDuration, unsigned char cUnit, int nOffset) const
+const CBlockIndex* CBlockIndex::GetIndexWithEffectiveParkRates(int nOffset) const
 {
     if (nProtocolVersion >= PROTOCOL_V2_0)
     {
@@ -4914,10 +4914,18 @@ int64 CBlockIndex::GetPremium(int64 nValue, int64 nDuration, unsigned char cUnit
             if (!peffectiveIndex)
                 return 0;
         }
-        return ::GetPremium(nValue, nDuration, cUnit, peffectiveIndex->vParkRateResult);
+        return peffectiveIndex;
     }
     else
-        return ::GetPremium(nValue, nDuration, cUnit, vParkRateResult);
+        return this;
+}
+
+int64 CBlockIndex::GetPremium(int64 nValue, int64 nDuration, unsigned char cUnit, int nOffset) const
+{
+    const CBlockIndex* peffectiveIndex = GetIndexWithEffectiveParkRates(nOffset);
+    if (!peffectiveIndex)
+        return 0;
+    return ::GetPremium(nValue, nDuration, cUnit, peffectiveIndex->vParkRateResult);
 }
 
 int64 CBlockIndex::GetSafeMinFee(unsigned char cUnit) const
