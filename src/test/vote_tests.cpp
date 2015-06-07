@@ -449,7 +449,7 @@ BOOST_AUTO_TEST_CASE(create_currency_coin_bases)
     // This custodian should win and currency should be created
     BOOST_CHECK(GenerateCurrencyCoinBases(vVote, mapAlreadyElected, vCurrencyCoinBase));
     BOOST_CHECK_EQUAL(1, vCurrencyCoinBase.size());
-    CTransaction& tx = vCurrencyCoinBase[0];
+    CTransaction tx = vCurrencyCoinBase[0];
     BOOST_CHECK(tx.IsCustodianGrant());
     BOOST_CHECK_EQUAL('B', tx.cUnit);
     BOOST_CHECK_EQUAL(1, tx.vout.size());
