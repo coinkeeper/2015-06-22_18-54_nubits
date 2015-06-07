@@ -2181,7 +2181,7 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
 
         {
             std::vector<CParkRateVote> vExpectedParkRateResult;
-            if (!CalculateParkRateResults(pindexNew->vote, pindexNew->pprev, vExpectedParkRateResult))
+            if (!CalculateParkRateResults(pindexNew->vote, pindexNew->pprev, pindexNew->nProtocolVersion, vExpectedParkRateResult))
                 return error("AddToBlockIndex() : Unable to calculate park rate results");
             if (pindexNew->vParkRateResult != vExpectedParkRateResult)
                 return error("AddToBlockIndex() : Park rate results do not match");
@@ -4353,7 +4353,7 @@ CBlock* CreateNewBlock(CReserveKey& reservekey, CWallet* pwallet, bool fProofOfS
             return NULL;
         }
 
-        if (!CalculateParkRateResults(vote, pindexPrev, vParkRateResult))
+        if (!CalculateParkRateResults(vote, pindexPrev, GetProtocolForNextBlock(pindexPrev), vParkRateResult))
         {
             printf("CreateNewBlock(): unable to calculate park rate results\n");
             return NULL;
@@ -4906,7 +4906,7 @@ void GenerateBitcoins(bool fGenerate, CWallet* pwallet)
     }
 }
 
-int64 CBlockIndex::GetPremium(int64 nValue, int64 nDuration, unsigned char cUnit, int nOffset) const
+const CBlockIndex* CBlockIndex::GetIndexWithEffectiveParkRates(int nOffset) const
 {
     if (nProtocolVersion >= PROTOCOL_V2_0)
     {
@@ -4917,10 +4917,18 @@ int64 CBlockIndex::GetPremium(int64 nValue, int64 nDuration, unsigned char cUnit
             if (!peffectiveIndex)
                 return 0;
         }
-        return ::GetPremium(nValue, nDuration, cUnit, peffectiveIndex->vParkRateResult);
+        return peffectiveIndex;
     }
     else
-        return ::GetPremium(nValue, nDuration, cUnit, vParkRateResult);
+        return this;
+}
+
+int64 CBlockIndex::GetPremium(int64 nValue, int64 nDuration, unsigned char cUnit, int nOffset) const
+{
+    const CBlockIndex* peffectiveIndex = GetIndexWithEffectiveParkRates(nOffset);
+    if (!peffectiveIndex)
+        return 0;
+    return ::GetPremium(nValue, nDuration, cUnit, peffectiveIndex->vParkRateResult);
 }
 
 int64 CBlockIndex::GetSafeMinFee(unsigned char cUnit) const

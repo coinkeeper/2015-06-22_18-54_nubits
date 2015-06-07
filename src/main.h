@@ -1505,6 +1505,7 @@ public:
             nFlags |= BLOCK_STAKE_MODIFIER;
     }
 
+    const CBlockIndex* GetIndexWithEffectiveParkRates(int nOffset = 0) const;
     int64 GetPremium(int64 nValue, int64 nDuration, unsigned char cUnit, int nOffset = 0) const;
     int64 GetNextPremium(int64 nValue, int64 nDuration, unsigned char cUnit) const
     {

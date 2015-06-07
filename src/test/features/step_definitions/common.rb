@@ -24,8 +24,8 @@ def time_travel(seconds)
 end
 
 def time_travel_to(time)
-  seconds = time - @time
-  time_travel(seconds.ceil)
+  seconds = (time - @time).ceil
+  time_travel(seconds)
 end
 
 Given(/^a network with nodes? (.+)(?: able to mint)?$/) do |node_names|

@@ -792,7 +792,7 @@ Value getparkrates(const Array& params, bool fHelp)
             "Returns an object containing the park rates in the block at height <height> (default: the last block).\n"
             "The default <currency> is the currency of the RPC server's wallet.");
 
-    CBlockIndex *pindex = pindexBest;
+    const CBlockIndex *pindex = pindexBest;
 
     if (params.size() > 0)
     {
@@ -816,6 +816,8 @@ Value getparkrates(const Array& params, bool fHelp)
 
     if (cUnit == 'S')
         throw JSONRPCError(-12, "Error: Park rates are not available on NuShares");
+
+    pindex = pindex->GetIndexWithEffectiveParkRates();
 
     BOOST_FOREACH(const CParkRateVote& parkRateVote, pindex->vParkRateResult)
     {
