@@ -548,7 +548,7 @@ When(/^the nodes travel to the Nu protocol v(\d+) switch time$/) do |arg1|
     switch_time = File.read(File.expand_path("../../../../version.h", __FILE__)).scan(/PROTOCOL_V2_0_TEST_VOTE_TIME = (\d+);/).first.first
     switch_time = Time.at(switch_time.to_i)
   else
-    raise
+    raise "Unknown protocol version: #{arg1.inspect}"
   end
   @nodes.values.each do |node|
     time = Time.parse(node.info["time"])

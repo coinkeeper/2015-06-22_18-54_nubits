@@ -21,7 +21,7 @@ Feature: Split money supply
 
   Scenario: Money supply after a NuShares custodian is elected
     Given a network with nodes "A" and "B" able to mint
-    And the nodes travel to the Nu protocol v06 switch time
+    And the network is at protocol 2.0
     When node "B" generates a NuShares address "cust"
     And node "A" votes an amount of "10,000,000" for custodian "cust"
     And node "A" finds blocks until custodian "cust" is elected
