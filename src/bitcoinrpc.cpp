@@ -3529,7 +3529,10 @@ Value liquidityinfo(const Array& params, bool fHelp)
     }
 
     CLiquidityInfo info;
-    info.nVersion = PROTOCOL_VERSION;
+    if (pindexBest->nProtocolVersion >= PROTOCOL_V2_0)
+        info.nVersion = PROTOCOL_V2_0;
+    else
+        info.nVersion = 50000;
     info.cUnit = cUnit;
     info.nTime = GetAdjustedTime();
     info.nBuyAmount = roundint64(params[1].get_real() * COIN);
@@ -3538,18 +3541,25 @@ Value liquidityinfo(const Array& params, bool fHelp)
     string sIdentifier;
     if (params.size() > 4)
         sIdentifier = params[4].get_str();
+    if (info.nVersion >= PROTOCOL_V2_0)
+        info.sIdentifier = sIdentifier;
 
-    LOCK(cs_mapLiquidity);
-    mapLiquidity[sIdentifier] = info;
-
-    BOOST_FOREACH(const PAIRTYPE(string, CLiquidityInfo)& otherInfoPair, mapLiquidity)
+    // Old process: liquidity identifiers were kept in memory and summed before the info was sent
+    // To remove when the network definitively switched to 2.0
+    if (info.nVersion < PROTOCOL_V2_0)
     {
-        const string& otherIdentifier = otherInfoPair.first;
-        if (otherIdentifier != sIdentifier)
+        LOCK(cs_mapLiquidity);
+        mapLiquidity[sIdentifier] = info;
+
+        BOOST_FOREACH(const PAIRTYPE(string, CLiquidityInfo)& otherInfoPair, mapLiquidity)
         {
-            const CLiquidityInfo& otherInfo = otherInfoPair.second;
-            info.nBuyAmount += otherInfo.nBuyAmount;
-            info.nSellAmount += otherInfo.nSellAmount;
+            const string& otherIdentifier = otherInfoPair.first;
+            if (otherIdentifier != sIdentifier)
+            {
+                const CLiquidityInfo& otherInfo = otherInfoPair.second;
+                info.nBuyAmount += otherInfo.nBuyAmount;
+                info.nSellAmount += otherInfo.nSellAmount;
+            }
         }
     }
 
@@ -3579,6 +3589,50 @@ Value liquidityinfo(const Array& params, bool fHelp)
     return "";
 }
 
+struct CLiquidity
+{
+    int64 nBuy;
+    int64 nSell;
+
+    CLiquidity() :
+        nBuy(0),
+        nSell(0)
+    {
+    }
+
+    CLiquidity(int64 nBuy, int64 nSell) :
+        nBuy(nBuy),
+        nSell(nSell)
+    {
+    }
+
+    CLiquidity(const CLiquidityInfo& info) :
+        nBuy(info.nBuyAmount),
+        nSell(info.nSellAmount)
+    {
+    }
+
+    CLiquidity operator+=(const CLiquidity& other)
+    {
+        nBuy += other.nBuy;
+        nSell += other.nSell;
+        return *this;
+    }
+
+    friend CLiquidity operator+(const CLiquidity& a, const CLiquidity& b)
+    {
+        return CLiquidity(a.nBuy + b.nBuy, a.nSell + b.nSell);
+    }
+
+    Object ToObject() const
+    {
+        Object object;
+        object.push_back(Pair("buy", ValueFromAmount(nBuy)));
+        object.push_back(Pair("sell", ValueFromAmount(nSell)));
+        return object;
+    }
+};
+
 Value getliquidityinfo(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
@@ -3596,31 +3650,93 @@ Value getliquidityinfo(const Array& params, bool fHelp)
         throw JSONRPCError(-3, "Invalid currency");
 
     Object result;
-    int64 nBuyAmount = 0;
-    int64 nSellAmount = 0;
+    CLiquidity total;
+    map<string, CLiquidity> mapTier;
+    map<string, CLiquidity> mapCustodian;
     {
         LOCK(cs_mapLiquidityInfo);
 
-        BOOST_FOREACH(const PAIRTYPE(const CBitcoinAddress, CLiquidityInfo)& item, mapLiquidityInfo)
+        BOOST_FOREACH(const PAIRTYPE(const CLiquiditySource, CLiquidityInfo)& item, mapLiquidityInfo)
         {
             const CLiquidityInfo& info = item.second;
             if (info.cUnit == cUnit)
             {
-                Object custodianInfo;
-                custodianInfo.push_back(Pair("buy", ValueFromAmount(info.nBuyAmount)));
-                custodianInfo.push_back(Pair("sell", ValueFromAmount(info.nSellAmount)));
-                result.push_back(Pair(info.GetCustodianAddress().ToString(), custodianInfo));
+                CLiquidity liquidity(info);
+                total += liquidity;
 
-                nBuyAmount += info.nBuyAmount;
-                nSellAmount += info.nSellAmount;
+                mapCustodian[info.GetCustodianAddress().ToString()] += liquidity;
+
+                string tierString = info.GetTier();
+                if (tierString != "")
+                    mapTier[tierString] += liquidity;
+            }
+        }
+    }
+    result.push_back(Pair("total", total.ToObject()));
+
+    Object tierResult;
+    BOOST_FOREACH(const PAIRTYPE(string, CLiquidity)& item, mapTier)
+    {
+        const string& tier = item.first;
+        const CLiquidity& liquidity = item.second;
+        tierResult.push_back(Pair(tier, liquidity.ToObject()));
+    }
+    result.push_back(Pair("tier", tierResult));
+
+    Object custodianResult;
+    BOOST_FOREACH(const PAIRTYPE(string, CLiquidity)& item, mapCustodian)
+    {
+        const string& tier = item.first;
+        const CLiquidity& liquidity = item.second;
+        custodianResult.push_back(Pair(tier, liquidity.ToObject()));
+    }
+    result.push_back(Pair("custodian", custodianResult));
+
+
+    return result;
+}
+
+Value getliquiditydetails(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+        throw runtime_error(
+            "getliquiditydetails <currency>\n"
+            "currency is the single letter of the currency (currently only 'B')"
+            );
+
+    if (params[0].get_str().size() != 1)
+        throw JSONRPCError(-3, "Invalid currency");
+
+    unsigned char cUnit = params[0].get_str()[0];
+
+    if (!IsValidCurrency(cUnit))
+        throw JSONRPCError(-3, "Invalid currency");
+
+    map<CBitcoinAddress, Object> mapCustodianResult;
+    {
+        LOCK(cs_mapLiquidityInfo);
+
+        BOOST_FOREACH(const PAIRTYPE(const CLiquiditySource, CLiquidityInfo)& item, mapLiquidityInfo)
+        {
+            const CLiquidityInfo& info = item.second;
+            if (info.cUnit == cUnit)
+            {
+                CLiquidity liquidity(info);
+                Object liquidityObject = liquidity.ToObject();;
+
+                Object& custodianObject = mapCustodianResult[info.GetCustodianAddress()];
+                custodianObject.push_back(Pair(info.sIdentifier, liquidityObject));
             }
         }
     }
 
-    Object total;
-    total.push_back(Pair("buy", ValueFromAmount(nBuyAmount)));
-    total.push_back(Pair("sell", ValueFromAmount(nSellAmount)));
-    result.push_back(Pair("total", total));
+    Object result;
+    BOOST_FOREACH(const PAIRTYPE(const CBitcoinAddress, Object)& item, mapCustodianResult)
+    {
+        const CBitcoinAddress& address = item.first;
+        const Object& object = item.second;
+        result.push_back(Pair(address.ToString(), object));
+    }
 
     return result;
 }
@@ -4597,6 +4713,7 @@ static const CRPCCommand vRPCCommands[] =
     { "setvote",                &setvote,                true },
     { "liquidityinfo",          &liquidityinfo,          false},
     { "getliquidityinfo",       &getliquidityinfo,       false},
+    { "getliquiditydetails",    &getliquiditydetails,    false},
     { "getmotions",             &getmotions,             true },
     { "getcustodianvotes",      &getcustodianvotes,      true },
     { "getelectedcustodians",   &getelectedcustodians,   true },

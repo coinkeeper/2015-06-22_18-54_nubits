@@ -199,10 +199,13 @@ end
 
 When(/^node "(.*?)" restarts$/) do |arg1|
   @nodes[arg1].tap do |node|
+    old_time = node.info["timestamp"]
     node.shutdown
     node.wait_for_shutdown
     node.start
     node.wait_for_boot
+    new_time = node.info["timestamp"]
+    node.rpc "timetravel", old_time - new_time
   end
 end
 

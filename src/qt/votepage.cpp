@@ -177,54 +177,83 @@ struct LiquidityTotal
         sell(0)
     {
     }
-};
 
-void VotePage::updateLiquidity()
-{
-    QMap<unsigned char, LiquidityTotal> totalMap;
+    LiquidityTotal operator+=(const LiquidityTotal& other)
     {
-        LOCK(cs_mapLiquidityInfo);
-
-        BOOST_FOREACH(const PAIRTYPE(const CBitcoinAddress, CLiquidityInfo)& item, mapLiquidityInfo)
-        {
-            const CLiquidityInfo& info = item.second;
-            LiquidityTotal& total = totalMap[info.cUnit];
-            total.buy += info.nBuyAmount;
-            total.sell += info.nSellAmount;
-        }
+        buy += other.buy;
+        sell += other.sell;
+        return *this;
     }
 
-    QTableWidget* table = ui->liquidity;
-    table->setRowCount(totalMap.size());
-
-    QMap<unsigned char, LiquidityTotal>::const_iterator it = totalMap.constBegin();
-    int row = 0;
-    unsigned char oldBaseUnit = BitcoinUnits::baseUnit;
-    while (it != totalMap.constEnd())
+    LiquidityTotal operator+=(const CLiquidityInfo& other)
     {
-        unsigned char unit = it.key();
-        const LiquidityTotal& total = it.value();
+        buy += other.nBuyAmount;
+        sell += other.nSellAmount;
+        return *this;
+    }
+
+    void AddToTable(QTableWidget* table, const QString& label) const
+    {
+        int row = table->rowCount();
+
+        table->setRowCount(row + 1);
 
         QTableWidgetItem *currencyItem = new QTableWidgetItem();
-        currencyItem->setData(Qt::DisplayRole, BitcoinUnits::baseName(unit));
+        currencyItem->setData(Qt::DisplayRole, label);
         table->setItem(row, 0, currencyItem);
 
-        BitcoinUnits::baseUnit = unit;
-
         QTableWidgetItem *buyItem = new QTableWidgetItem();
-        buyItem->setData(Qt::DisplayRole, BitcoinUnits::format(BitcoinUnits::BTC, total.buy));
+        buyItem->setData(Qt::DisplayRole, BitcoinUnits::format(BitcoinUnits::BTC, buy));
         buyItem->setData(Qt::TextAlignmentRole, QVariant(Qt::AlignRight | Qt::AlignVCenter));
         table->setItem(row, 1, buyItem);
 
         QTableWidgetItem *sellItem = new QTableWidgetItem();
-        sellItem->setData(Qt::DisplayRole, BitcoinUnits::format(BitcoinUnits::BTC, total.sell));
+        sellItem->setData(Qt::DisplayRole, BitcoinUnits::format(BitcoinUnits::BTC, sell));
         sellItem->setData(Qt::TextAlignmentRole, QVariant(Qt::AlignRight | Qt::AlignVCenter));
         table->setItem(row, 2, sellItem);
+    }
+};
+
+void VotePage::updateLiquidity()
+{
+    unsigned char cUnit = 'B';
+    LiquidityTotal total;
+    QMap<QString, LiquidityTotal> tierMap;
+    {
+        LOCK(cs_mapLiquidityInfo);
+
+        BOOST_FOREACH(const PAIRTYPE(const CLiquiditySource, CLiquidityInfo)& item, mapLiquidityInfo)
+        {
+            const CLiquidityInfo& info = item.second;
+            if (info.cUnit == cUnit)
+            {
+                total += info;
+                QString tier = QString::fromStdString(info.GetTier());
+                tierMap[tier] += info;
+            }
+        }
+    }
+
+    QTableWidget* table = ui->liquidity;
+    table->setRowCount(0);
+
+    QMap<QString, LiquidityTotal>::const_iterator it = tierMap.constBegin();
+    while (it != tierMap.constEnd())
+    {
+        const QString& tier = it.key();
+        const LiquidityTotal& liquidity = it.value();
+
+        QString label;
+        if (tier == "")
+            label = tr("Unknown tier");
+        else
+            label = tr("Tier %1").arg(tier);
+        liquidity.AddToTable(table, label);
 
         it++;
-        row++;
     }
-    BitcoinUnits::baseUnit = oldBaseUnit;
+
+    total.AddToTable(table, tr("Total"));
 
     table->setVisible(false);
     table->resizeColumnToContents(0);
