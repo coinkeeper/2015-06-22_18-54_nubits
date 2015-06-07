@@ -607,7 +607,7 @@ BOOST_AUTO_TEST_CASE(premium_calculation)
 
 BOOST_AUTO_TEST_CASE(effective_park_rates_delayed_after_protocol_v2_0)
 {
-    CBlockIndex *pindexBase;
+    CBlockIndex *pindexBase = NULL;
 
     int64 nValue = 1000 * COIN;
     unsigned char cUnit = 'B';
