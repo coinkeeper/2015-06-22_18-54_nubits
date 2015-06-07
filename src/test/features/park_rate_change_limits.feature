@@ -28,6 +28,7 @@ Feature: Park rate increase and decrease are limited
       | 6 months |                   10 % |
       | 1 year   |                0.005 % |
     And node "Alice" finds enough blocks for a park rate vote to become the median
+    And node "Alice" finds enough blocks for the voted park rate to become effective
 
     And node "Alice" finds a block received by all other nodes
     Then the NuBit park rates should be
@@ -81,6 +82,7 @@ Feature: Park rate increase and decrease are limited
       | 6 months |                0.012 % |
       | 1 year   |                0.012 % |
     And node "Alice" finds enough blocks for a park rate vote to become the median
+    And node "Alice" finds enough blocks for the voted park rate to become effective
 
     When node "Alice" finds 6 blocks received by all other nodes
     Then the NuBit park rates should be
@@ -93,6 +95,7 @@ Feature: Park rate increase and decrease are limited
       | 6 months |                    0 % |
       | 1 year   |                0.011 % |
     And node "Alice" finds enough blocks for the APR "0 %" to become the median on "6 months"
+    And node "Alice" finds enough blocks for the voted park rate to become effective
     Then the NuBit park rates should be
       | Duration | Annual percentage rate |
       | 6 months |                0.008 % |
